@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 
@@ -10,14 +9,11 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+export const app = express();
+app.use(express.json({ limit: '50mb' }));
 
-  app.use(express.json({ limit: '50mb' }));
-
-  // API Route for Chat
-  app.post("/api/chat", async (req, res) => {
+// API Route for Chat
+app.post("/api/chat", async (req, res) => {
     const { message, attachment, history = [], model = 'auto', memories = [], settings = {} } = req.body;
     const { aiMode = 'smart', responseStyle = 'detailed', apiKey: userApiKey = '' } = settings;
 
@@ -205,8 +201,12 @@ async function startServer() {
     }
   });
 
+async function startServer() {
+  const PORT = 3000;
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -225,4 +225,9 @@ async function startServer() {
   });
 }
 
-startServer();
+// Only start the server if not running in a serverless environment like Vercel
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
