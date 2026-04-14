@@ -1,0 +1,5 @@
+{
+  "name": "BLAZE-AI",
+  "description": "Next-generation AI assistant experience with chat, projects, and advanced AI modes.",
+  "requestFramePermissions": ["camera", "microphone"]
+}

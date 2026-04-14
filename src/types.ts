@@ -1,0 +1,241 @@
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export type Plan = 'FREE' | 'PLUS' | 'PRO' | 'ELITE' | 'OWNER';
+
+export const PLAN_ORDER: Record<Plan, number> = {
+  'FREE': 0,
+  'PRO': 1,
+  'PLUS': 2,
+  'ELITE': 3,
+  'OWNER': 4
+};
+
+export type AIMode = 'lite' | 'smart' | 'beast';
+export type AIModule = 'chat' | 'code' | 'image' | 'research';
+export type AIModel = 'claude' | 'gpt4o' | 'deepseek' | 'grok' | 'llama' | 'auto';
+export type Theme = 'light' | 'dark' | 'system';
+
+export interface UserSettings {
+  theme: 'dark' | 'light' | 'system';
+  fontSize: 'small' | 'medium' | 'large';
+  aiMode: 'fast' | 'smart' | 'pro';
+  responseStyle: 'short' | 'detailed' | 'step-by-step';
+  saveHistory: boolean;
+  privacyMode: boolean;
+  personalization: boolean;
+  emailNotifications: boolean;
+  soundAlerts: boolean;
+  apiKey: string;
+  language: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName?: string;
+  username?: string;
+  photoURL?: string;
+  plan: Plan;
+  role?: 'admin' | 'user' | 'owner';
+  status: 'active' | 'blocked';
+  twoFactorEnabled?: boolean;
+  createdAt: any;
+  lastLogin?: any;
+  theme: Theme;
+  mode: AIMode;
+  currentModule?: AIModule;
+  selectedModel?: AIModel;
+  credits?: number;
+  dailyUsage?: number;
+  totalUsage?: number;
+  lastReset?: any;
+}
+
+export interface ChatThread {
+  id: string;
+  userId: string;
+  title: string;
+  isPinned?: boolean;
+  isArchived?: boolean;
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface Attachment {
+  type: 'file' | 'image';
+  url: string; // Base64 data URL
+  name: string;
+  mimeType: string;
+  size?: number;
+  extractedText?: string;
+}
+
+export interface Message {
+  id: string;
+  userId: string;
+  threadId: string;
+  sender: 'user' | 'ai';
+  message: string;
+  timestamp: any;
+  chatId?: string;
+  attachment?: Attachment;
+  modelUsed?: 'claude' | 'gpt4o' | 'deepseek' | 'grok' | 'llama';
+  isStopped?: boolean;
+}
+
+export interface MemoryItem {
+  id: string;
+  userId: string;
+  content: string;
+  category: 'preference' | 'fact' | 'instruction';
+  createdAt: any;
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: 'create' | 'update' | 'delete' | 'list' | 'get' | 'write';
+  path: string | null;
+  authInfo: any;
+}
+
+export interface ModuleConfig {
+  id: string;
+  name: string;
+  type: AIModule;
+  isEnabled: boolean;
+  apiKey?: string;
+  limit?: number;
+  status: 'active' | 'inactive';
+}
+
+export interface SystemSettings {
+  id: 'global';
+  temperature: number;
+  defaultModel: AIModel;
+  responseStyle: string;
+  features: {
+    codeGen: boolean;
+    imageGen: boolean;
+    search: boolean;
+  };
+  globalSystemPrompt: string;
+  rateLimits: {
+    free: number;
+    pro: number;
+  };
+}
+
+export interface RedeemCode {
+  id: string;
+  code: string;
+  plan: Plan;
+  credits: number;
+  maxUses: number;
+  usedCount: number;
+  expiryDate: any;
+}
+
+export interface UserRedeem {
+  id: string;
+  userId: string;
+  code: string;
+  createdAt: any;
+}
+
+export interface AdminLog {
+  id: string;
+  adminId: string;
+  action: string;
+  details: string;
+  timestamp: any;
+}
+
+export interface SupportTicket {
+  id: string;
+  userId: string;
+  email: string;
+  subject: string;
+  issueType: 'Bug' | 'Payment' | 'Account' | 'Other';
+  description: string;
+  status: 'open' | 'pending' | 'resolved' | 'denied';
+  adminReply?: string;
+  feedback?: {
+    rating: number;
+    comment: string;
+  };
+  mediaUrl?: string[];
+  mediaType?: string[];
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface PlanSettings {
+  id: Plan;
+  name: Plan;
+  price: number;
+  dailyLimit: number;
+  features: {
+    chat: boolean;
+    code: boolean;
+    image: boolean;
+    tools: boolean;
+    priority: boolean;
+  };
+  maxTokens: number;
+  speed: 'slow' | 'medium' | 'fast';
+  isEnabled: boolean;
+  rateLimitPerMin?: number;
+}
+
+export interface AppSettings {
+  maintenance: boolean;
+  message: string;
+  allowAdmins: boolean;
+  scheduledEnd?: any;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: 'support' | 'system' | 'billing';
+  message: string;
+  read: boolean;
+  createdAt: any;
+  link?: string;
+}
+
+export interface ModuleSettings {
+  chat: boolean;
+  code: boolean;
+  image: boolean;
+  tools: boolean;
+  api: boolean;
+  search: boolean;
+}
+
+export interface Broadcast {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'update';
+  target: 'all' | 'specific';
+  userIds?: string[];
+  createdAt: any;
+  expiresAt?: any;
+  createdBy: string;
+}
+
+export interface UserBroadcast {
+  id: string;
+  userId: string;
+  broadcastId: string;
+  read: boolean;
+  readAt: any;
+}

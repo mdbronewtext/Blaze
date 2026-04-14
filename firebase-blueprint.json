@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "plan": { "type": "string", "enum": ["FREE", "PLUS", "PRO", "ELITE", "OWNER"] },
+        "role": { "type": "string", "enum": ["user", "admin", "owner"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "theme": { "type": "string", "enum": ["light", "dark", "system"] },
+        "mode": { "type": "string", "enum": ["lite", "smart", "beast"] }
+      },
+      "required": ["uid", "email", "plan"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "A chat thread session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "createdAt", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single message in a chat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "threadId": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "ai"] },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["sender", "message", "timestamp", "userId"]
+    },
+    "RedeemCode": {
+      "title": "RedeemCode",
+      "description": "A code that can be redeemed for a plan and credits",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "plan": { "type": "string", "enum": ["FREE", "PLUS", "PRO", "ELITE", "OWNER"] },
+        "credits": { "type": "number" },
+        "maxUses": { "type": "number" },
+        "usedCount": { "type": "number" },
+        "expiryDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "plan", "credits", "maxUses", "usedCount"]
+    },
+    "UserRedeem": {
+      "title": "UserRedeem",
+      "description": "A record of a user redeeming a code",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "code": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "code", "createdAt"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User specific application settings",
+      "type": "object",
+      "properties": {
+        "theme": { "type": "string", "enum": ["dark", "light", "system"] },
+        "fontSize": { "type": "string", "enum": ["small", "medium", "large"] },
+        "aiMode": { "type": "string", "enum": ["fast", "smart", "pro"] },
+        "responseStyle": { "type": "string", "enum": ["short", "detailed", "step-by-step"] },
+        "saveHistory": { "type": "boolean" },
+        "personalization": { "type": "boolean" },
+        "emailNotifications": { "type": "boolean" },
+        "soundAlerts": { "type": "boolean" },
+        "apiKey": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/users/{userId}/settings/{configId}": {
+      "schema": "UserSettings",
+      "description": "User settings"
+    },
+    "/threads/{threadId}": {
+      "schema": "Chat",
+      "description": "Chat threads"
+    },
+    "/chats/{messageId}": {
+      "schema": "Message",
+      "description": "Flat collection of all chat messages"
+    },
+    "/redeem/{codeId}": {
+      "schema": "RedeemCode",
+      "description": "Redeemable codes"
+    },
+    "/userRedeems/{redeemId}": {
+      "schema": "UserRedeem",
+      "description": "User redemption history"
+    },
+    "/planSettings/{planId}": {
+      "schema": "PlanSettings",
+      "description": "Dynamic plan configurations"
+    },
+    "/appSettings/{configId}": {
+      "schema": "AppSettings",
+      "description": "Global application settings"
+    }
+  }
+}

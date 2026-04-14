@@ -1,0 +1,1138 @@
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Send, 
+  Zap, 
+  Brain, 
+  Flame, 
+  Sparkles,
+  User,
+  Bot,
+  Copy,
+  Check,
+  RotateCcw,
+  Crown,
+  Paperclip,
+  ImageIcon,
+  FileText,
+  Camera,
+  X,
+  Loader2,
+  FileSearch,
+  FileJson,
+  FileCode,
+  UploadCloud,
+  Code2,
+  Search,
+  MessageSquare,
+  ChevronDown,
+  Ban,
+  Lock,
+  Mic
+} from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { Message, AIMode, Plan, Attachment, AIModule, AIModel, ModuleSettings, UserProfile } from '../types';
+import { CodeBlock } from './CodeBlock';
+import { ChatSkeleton } from './Skeleton';
+import { NotificationBell } from './NotificationBell';
+import { CameraCapture } from './CameraCapture';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set up PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+interface ChatInterfaceProps {
+  messages: Message[];
+  onSendMessage: (content: string, attachment?: Attachment) => void;
+  currentMode: AIMode;
+  currentModule: AIModule;
+  selectedAIModel: AIModel;
+  onAIModelChange: (model: AIModel) => void;
+  setMode: (mode: AIMode) => void;
+  onSaveToMemory?: (content: string) => void;
+  isTyping: boolean;
+  streamingMessage?: string;
+  onStopGenerating?: () => void;
+  userPlan: Plan;
+  privacyMode?: boolean;
+  isLoading?: boolean;
+  moduleSettings: ModuleSettings;
+  userRole?: string;
+  currentUser: UserProfile;
+}
+
+const MessageItem = React.memo(({ 
+  msg, 
+  idx, 
+  copiedId, 
+  handleCopy, 
+  onSaveToMemory,
+  formatTime,
+  formatSize
+}: { 
+  msg: Message; 
+  idx: number; 
+  copiedId: string | null; 
+  handleCopy: (id: string, text: string) => void; 
+  onSaveToMemory?: (content: string) => void;
+  formatTime: (ts: any) => string;
+  formatSize: (bytes?: number) => string;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.3, ease: "easeOut" }}
+    className={`flex gap-3 sm:gap-4 group ${msg.sender === 'ai' ? 'max-w-4xl mx-auto' : 'max-w-3xl ml-auto flex-row-reverse'}`}
+  >
+    <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center shadow-sm ${
+      msg.sender === 'ai' 
+        ? 'bg-zinc-800 text-zinc-300 border border-zinc-700' 
+        : 'bg-blue-600 text-white'
+    }`}>
+      {msg.sender === 'ai' ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
+    </div>
+    <div className={`space-y-1.5 min-w-0 w-full flex flex-col ${msg.sender === 'ai' ? 'items-start' : 'items-end'}`}>
+      {msg.sender === 'ai' && (
+        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-zinc-300 ml-1">
+          <span>{msg.modelUsed === 'claude' ? 'Claude 🔥' : (msg.modelUsed === 'deepseek' ? 'DeepSeek-R1 ✨' : (msg.modelUsed === 'grok' ? 'Grok-3 ⚡' : (msg.modelUsed === 'llama' ? 'Llama 3.2 👁️' : 'GPT-4o 🧠')))}</span>
+        </div>
+      )}
+      <div className={`p-4 text-[15px] leading-relaxed break-words overflow-hidden glass-card depth-shadow ${
+        msg.sender === 'ai' 
+          ? 'border border-white/5 text-zinc-200 rounded-2xl rounded-tl-sm w-full' 
+          : 'bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium rounded-2xl rounded-tr-sm border border-blue-400/20'
+      }`}>
+        {msg.attachment && (
+          <div className="mb-3">
+            {msg.attachment.type === 'image' ? (
+              <img src={msg.attachment.url} alt="Attachment" className="max-w-full rounded-lg max-h-64 object-contain bg-black/20" />
+            ) : (
+              <div className="flex items-center gap-3 bg-black/20 p-3 rounded-lg border border-white/10">
+                <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                  {msg.attachment.mimeType === 'application/pdf' ? <FileSearch className="w-5 h-5 text-red-400" /> : <FileText className="w-5 h-5 text-blue-400" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{msg.attachment.name}</p>
+                  <p className="text-[10px] text-zinc-500 uppercase">{formatSize(msg.attachment.size)}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <div className="markdown-body overflow-x-auto">
+          <ReactMarkdown
+            components={{
+              code({ node, inline, className, children, ...props }: any) {
+                const match = /language-(\w+)/.exec(className || '');
+                return !inline && match ? (
+                  <CodeBlock
+                    language={match[1]}
+                    value={String(children).replace(/\n$/, '')}
+                  />
+                ) : (
+                  <code className={`${className} bg-black/20 px-1.5 py-0.5 rounded-md font-mono text-[13px]`} {...props}>
+                    {children}
+                  </code>
+                );
+              }
+            }}
+          >
+            {msg.message}
+          </ReactMarkdown>
+        </div>
+      </div>
+      
+      <div className={`flex items-center gap-3 px-1 mt-1 ${msg.sender === 'ai' ? 'flex-row' : 'flex-row-reverse'}`}>
+        <span className="text-[11px] text-zinc-500 font-medium">
+          {formatTime(msg.timestamp)}
+        </span>
+        
+        {msg.sender === 'ai' && (
+          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <button 
+              type="button"
+              onClick={() => handleCopy(msg.id, msg.message)}
+              className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-md transition-colors"
+              title="Copy message"
+            >
+              {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+            <button 
+              type="button"
+              onClick={() => onSaveToMemory?.(msg.message)}
+              className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 rounded-md transition-colors"
+              title="Save to Memory"
+            >
+              <Brain className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  </motion.div>
+));
+
+const StreamingMessageItem = React.memo(({ 
+  selectedAIModel, 
+  streamingMessage 
+}: { 
+  selectedAIModel: AIModel; 
+  streamingMessage: string; 
+}) => (
+  <motion.div 
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="flex gap-3 sm:gap-4 max-w-4xl mx-auto"
+  >
+    <div className="w-8 h-8 rounded-full bg-zinc-800 text-zinc-300 shrink-0 flex items-center justify-center border border-zinc-700 shadow-sm">
+      <Bot className="w-5 h-5" />
+    </div>
+    <div className="flex flex-col items-start gap-1.5">
+      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-zinc-300 ml-1">
+        <span>{selectedAIModel === 'claude' ? 'Claude 🔥' : (selectedAIModel === 'deepseek' ? 'DeepSeek-R1 ✨' : (selectedAIModel === 'grok' ? 'Grok-3 ⚡' : (selectedAIModel === 'llama' ? 'Llama 3.2 👁️' : (selectedAIModel === 'gpt4o' ? 'GPT-4o 🧠' : 'AI 🤖'))))}</span>
+      </div>
+      <div className="flex flex-col gap-3 p-4 glass-card border border-white/5 rounded-2xl rounded-tl-sm depth-shadow max-w-full">
+        {streamingMessage ? (
+          <div className="prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown
+              components={{
+                code({ node, inline, className, children, ...props }: any) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  return !inline && match ? (
+                    <CodeBlock
+                      language={match[1]}
+                      value={String(children).replace(/\n$/, '')}
+                      {...props}
+                    />
+                  ) : (
+                    <code className={`${className} bg-black/20 px-1.5 py-0.5 rounded-md font-mono text-[13px]`} {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+              }}
+            >
+              {streamingMessage}
+            </ReactMarkdown>
+            <motion.span
+              animate={{ opacity: [0, 1, 0] }}
+              transition={{ repeat: Infinity, duration: 0.8 }}
+              className="inline-block w-2 h-4 bg-white ml-1 align-middle"
+            />
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-[15px] text-zinc-400 font-medium">
+              {selectedAIModel === 'claude' ? 'Claude' : (selectedAIModel === 'deepseek' ? 'DeepSeek-R1' : (selectedAIModel === 'grok' ? 'Grok-3' : (selectedAIModel === 'llama' ? 'Llama 3.2' : (selectedAIModel === 'gpt4o' ? 'GPT-4o' : 'AI'))))} is thinking
+            </span>
+            <div className="flex items-center gap-1">
+              <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.2 }} className="w-1.5 h-1.5 bg-zinc-400 rounded-full" />
+              <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }} className="w-1.5 h-1.5 bg-zinc-400 rounded-full" />
+              <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }} className="w-1.5 h-1.5 bg-zinc-400 rounded-full" />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  </motion.div>
+));
+
+export const ChatInterface = React.memo(({ 
+  messages, 
+  onSendMessage, 
+  currentMode, 
+  currentModule,
+  selectedAIModel,
+  onAIModelChange,
+  setMode, 
+  onSaveToMemory,
+  isTyping,
+  streamingMessage,
+  onStopGenerating,
+  userPlan,
+  privacyMode = false,
+  isLoading = false,
+  moduleSettings,
+  userRole,
+  currentUser
+}: ChatInterfaceProps) => {
+  const isOwner = userRole === 'owner';
+  const isModuleEnabled = isOwner || (
+    currentModule === 'chat' ? moduleSettings.chat :
+    currentModule === 'code' ? moduleSettings.code :
+    currentModule === 'image' ? moduleSettings.image :
+    currentModule === 'research' ? moduleSettings.search : true
+  );
+  const [input, setInput] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isModuleMenuOpen, setIsModuleMenuOpen] = useState(false);
+  
+  // Voice Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const isRecordingRef = useRef(false);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+
+  const getModuleInfo = () => {
+    switch(currentModule) {
+      case 'code': return { label: 'Code Master', icon: <Code2 className="w-4 h-4" />, placeholder: 'Ask for code, debugging, or architecture...' };
+      case 'image': return { label: 'Vision AI', icon: <ImageIcon className="w-4 h-4" />, placeholder: 'Upload an image or ask for visual analysis...' };
+      case 'research': return { label: 'Research', icon: <Search className="w-4 h-4" />, placeholder: 'Deep dive into documents or complex topics...' };
+      default: return { label: 'AI Chat', icon: <MessageSquare className="w-4 h-4" />, placeholder: 'Message Claude, GPT-4o or GPT-5...' };
+    }
+  };
+
+  const moduleInfo = getModuleInfo();
+
+  const selectedModelInfo = [
+    { id: 'claude', label: 'Claude', icon: <Flame className="w-3 h-3 text-orange-500" /> },
+    { id: 'gpt4o', label: 'GPT-4o', icon: <Brain className="w-3 h-3 text-blue-400" /> },
+    { id: 'deepseek', label: 'DeepSeek-R1', icon: <Sparkles className="w-3 h-3 text-emerald-500" /> },
+    { id: 'grok', label: 'Grok-3', icon: <Zap className="w-3 h-3 text-white" /> },
+    { id: 'llama', label: 'Llama 3.2', icon: <ImageIcon className="w-3 h-3 text-blue-500" /> },
+    { id: 'auto', label: 'Auto', icon: <Bot className="w-3 h-3 text-zinc-400" /> }
+  ].find(m => m.id === selectedAIModel) || { id: 'auto', label: 'Auto', icon: <Bot className="w-3 h-3 text-zinc-400" /> };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      // Scroll to bottom immediately on resize (e.g., keyboard open)
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    };
+    
+    window.addEventListener('resize', handleResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(event.target as Node)) {
+        setShowAttachMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !recognitionRef.current) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recog = new SpeechRecognition();
+        recog.continuous = true;
+        recog.interimResults = true;
+        recog.lang = 'en-US';
+
+        recog.onresult = (event: any) => {
+          console.log("Result received");
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+
+          // Append final transcript to input, or show interim
+          if (finalTranscript) {
+            setInput(prev => prev + (prev ? ' ' : '') + finalTranscript);
+          }
+        };
+
+        recog.onerror = (event: any) => {
+          console.error('Error occurred', event.error);
+          if (event.error === 'not-allowed') {
+            setIsRecording(false);
+            isRecordingRef.current = false;
+            alert('Microphone access denied ❌. Please allow microphone access in your browser settings or try opening the app in a NEW TAB.');
+          } else if (event.error === 'no-speech') {
+            // Ignore no-speech errors, it will auto-restart if continuous
+            console.log('No speech detected, continuing...');
+          } else if (event.error === 'aborted') {
+            console.log('Recognition aborted');
+            setIsRecording(false);
+            isRecordingRef.current = false;
+          } else if (event.error === 'network') {
+            setIsRecording(false);
+            isRecordingRef.current = false;
+            alert('Network error occurred during speech recognition.');
+          } else {
+            setIsRecording(false);
+            isRecordingRef.current = false;
+            alert('Voice input unstable, try again.');
+          }
+        };
+
+        recog.onend = () => {
+          console.log("Recognition stopped");
+          if (isRecordingRef.current) {
+            console.log("Auto-stopped, restarting...");
+            try {
+              recog.start();
+            } catch (e) {
+              console.error("Failed to restart recognition:", e);
+              setIsRecording(false);
+              isRecordingRef.current = false;
+            }
+          } else {
+            setIsRecording(false);
+          }
+        };
+
+        recognitionRef.current = recog;
+      }
+    }
+  }, []);
+
+  const toggleRecording = async (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    console.log("Mic clicked");
+    
+    if (!recognitionRef.current) {
+      console.log("Speech recognition not initialized");
+      alert('Voice not supported on this browser ❌');
+      return;
+    }
+
+    if (isRecordingRef.current) {
+      console.log("Stopping recognition manually");
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      recognitionRef.current.stop();
+    } else {
+      try {
+        console.log("Starting recognition");
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          console.log("MediaDevices API not available");
+          alert('Voice not supported on this browser ❌. Please click the "Open in New Tab" button (↗️) at the top right of the preview window.');
+          return;
+        }
+        
+        console.log("Requesting microphone permission...");
+        // Explicitly request microphone permission first to avoid 'not-allowed' error in some browsers
+        // Use a timeout in case the browser suppresses the prompt and hangs the promise
+        const stream = await Promise.race([
+          navigator.mediaDevices.getUserMedia({ audio: true }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Permission request timed out. Please check your browser settings or open in a new tab.")), 5000))
+        ]) as MediaStream;
+        
+        // Stop the stream tracks immediately since we only needed it to trigger the permission prompt
+        if (stream && stream.getTracks) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        
+        console.log("Recognition started");
+        isRecordingRef.current = true;
+        setIsRecording(true);
+        recognitionRef.current.start();
+      } catch (err: any) {
+        console.error("Microphone access error:", err.message || err);
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        const isPermissionError = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message === 'Permission denied';
+        
+        if (isPermissionError) {
+          alert('Microphone access denied ❌\n\nTo use voice features in the preview, please:\n1. Click the "Open in New Tab" button (↗️) at the top right.\n2. Allow microphone access in the new tab.\n3. Check your browser site settings.');
+        } else {
+          alert(`Could not start microphone: ${err.message || 'Unknown error'}. Please try again.`);
+        }
+      }
+    }
+  };
+
+  const handleSubmit = (e?: React.FormEvent, customPrompt?: string) => {
+    e?.preventDefault();
+    const finalInput = customPrompt || input.trim();
+    if ((finalInput || attachment) && !isTyping && !isProcessing) {
+      onSendMessage(finalInput, attachment || undefined);
+      setInput('');
+      setAttachment(null);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+      // Reset height
+      e.currentTarget.style.height = 'auto';
+    }
+  };
+
+  const startCamera = () => {
+    setShowCamera(true);
+    setShowAttachMenu(false);
+  };
+
+  const handleCameraCapture = (imageData: string) => {
+    setAttachment({
+      type: 'image',
+      url: imageData,
+      name: `camera_capture_${Date.now()}.jpg`,
+      mimeType: 'image/jpeg',
+      size: Math.round((imageData.length * 3) / 4)
+    });
+  };
+
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = `${e.target.scrollHeight}px`;
+  };
+
+  const handleCopy = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const formatTime = (timestamp: any) => {
+    if (!timestamp) return '';
+    try {
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const formatSize = (bytes?: number) => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const extractPdfText = async (url: string): Promise<string> => {
+    const loadingTask = pdfjsLib.getDocument(url);
+    const pdf = await loadingTask.promise;
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      fullText += `--- Page ${i} ---\n${pageText}\n\n`;
+    }
+    return fullText;
+  };
+
+  const processFile = async (file: File, type: 'file' | 'image') => {
+    setIsProcessing(true);
+    try {
+      let result = '';
+      let extractedText = '';
+
+      if (type === 'image') {
+        // Compress image
+        result = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+              const maxDim = 1024; // Max dimension for AI processing
+
+              if (width > height && width > maxDim) {
+                height *= maxDim / width;
+                width = maxDim;
+              } else if (height > maxDim) {
+                width *= maxDim / height;
+                height = maxDim;
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                // Compress to JPEG with 0.8 quality
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+              } else {
+                resolve(e.target?.result as string);
+              }
+            };
+            img.onerror = () => reject(new Error("Failed to load image"));
+            img.src = e.target?.result as string;
+          };
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsDataURL(file);
+        });
+      } else {
+        // Handle normal files
+        result = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+
+        if (file.type === 'application/pdf') {
+          extractedText = await extractPdfText(result);
+        } else if (file.type.startsWith('text/') || 
+                   ['application/json', 'application/javascript', 'text/javascript'].includes(file.type) ||
+                   file.name.endsWith('.css') || file.name.endsWith('.html')) {
+          const textReader = new FileReader();
+          extractedText = await new Promise<string>((resolve) => {
+            textReader.onload = (e) => resolve(e.target?.result as string);
+            textReader.readAsText(file);
+          });
+        }
+      }
+
+      setAttachment({
+        type,
+        url: result,
+        name: file.name,
+        mimeType: type === 'image' ? 'image/jpeg' : file.type,
+        size: file.size,
+        extractedText: extractedText || undefined
+      });
+      setShowAttachMenu(false);
+    } catch (err) {
+      console.error("Error processing file:", err);
+      alert("Error processing file. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'file' | 'image') => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file, type);
+    e.target.value = '';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      const type = file.type.startsWith('image/') ? 'image' : 'file';
+      processFile(file, type);
+    }
+  };
+
+  const modes: { id: AIMode; label: string; icon: React.ReactNode; color: string; minPlan: Plan }[] = [
+    { id: 'lite', label: 'Lite', icon: <Zap className="w-4 h-4" />, color: 'text-blue-400', minPlan: 'FREE' },
+    { id: 'smart', label: 'Smart', icon: <Brain className="w-4 h-4" />, color: 'text-purple-400', minPlan: 'PLUS' },
+    { id: 'beast', label: 'Beast', icon: <Flame className="w-4 h-4" />, color: 'text-orange-500', minPlan: 'PRO' },
+  ];
+
+  const canUseMode = (minPlan: Plan) => {
+    if (userPlan === 'OWNER') return true;
+    const plans: Plan[] = ['FREE', 'PLUS', 'PRO', 'ELITE'];
+    return plans.indexOf(userPlan) >= plans.indexOf(minPlan);
+  };
+
+  const displayedMessages = useMemo(() => {
+    return messages.slice(-50);
+  }, [messages]);
+
+  return (
+    <div 
+      className={`flex-1 flex flex-col h-full bg-zinc-950 relative overflow-hidden font-sans transition-colors ${isDragging ? 'bg-blue-900/10' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag Overlay */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-blue-600/20 backdrop-blur-sm pointer-events-none"
+          >
+            <div className="flex flex-col items-center gap-4 p-12 border-4 border-dashed border-blue-500 rounded-[3rem] bg-zinc-950/80 shadow-2xl">
+              <UploadCloud className="w-20 h-20 text-blue-400 animate-bounce" />
+              <h2 className="text-3xl font-black text-white">Drop to Upload</h2>
+              <p className="text-zinc-400 font-medium">PDF, Images, Text, Code</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Background Glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-64 bg-blue-900/10 blur-[120px] pointer-events-none" />
+
+      {/* Header / Mode Selector */}
+      <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-xl z-10">
+        <div className="flex items-center gap-3 relative">
+          <button 
+            type="button"
+            onClick={() => setIsModuleMenuOpen(!isModuleMenuOpen)}
+            className="flex items-center gap-2.5 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-all group shadow-lg"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-400 group-hover:text-white transition-colors">{moduleInfo.icon}</span>
+              <span className="text-xs font-bold text-white tracking-tight">{moduleInfo.label}</span>
+            </div>
+            
+            <div className="w-px h-4 bg-zinc-800 mx-1" />
+            
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800/50 rounded-lg border border-zinc-700/30">
+              {selectedModelInfo.icon}
+              <span className="text-[10px] font-black text-zinc-200 uppercase tracking-wider">{selectedModelInfo.label}</span>
+            </div>
+
+            <ChevronDown className={`w-3 h-3 text-zinc-500 transition-transform duration-300 ${isModuleMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          <AnimatePresence>
+            {isModuleMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute top-full left-0 mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-2xl"
+              >
+                <div className="px-3 py-2 mb-1">
+                  <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Select Engine</p>
+                </div>
+                <div className="space-y-1">
+                  {[
+                    { id: 'claude', label: 'Claude 3.5 Sonnet', icon: <Flame className="w-4 h-4 text-orange-500" />, desc: 'Expert Programming', color: 'orange' },
+                    { id: 'gpt4o', label: 'GPT-4o Intelligence', icon: <Brain className="w-4 h-4 text-blue-400" />, desc: 'Fast & Reliable', color: 'blue' },
+                    { id: 'deepseek', label: 'DeepSeek-R1 Reasoning', icon: <Sparkles className="w-4 h-4 text-emerald-500" />, desc: 'Deep Thinking', color: 'emerald' },
+                    { id: 'grok', label: 'Grok-3 Intelligence', icon: <Zap className="w-4 h-4 text-white" />, desc: 'Witty & Sharp', color: 'zinc' },
+                    { id: 'llama', label: 'Llama 3.2 Vision', icon: <ImageIcon className="w-4 h-4 text-blue-500" />, desc: 'Visual Intelligence', color: 'blue' },
+                    { id: 'auto', label: 'Auto Intelligence', icon: <Bot className="w-4 h-4 text-zinc-400" />, desc: 'Smart Switching', color: 'zinc' }
+                  ].map((m) => (
+                    <button
+                      type="button"
+                      key={m.id}
+                      onClick={() => {
+                        onAIModelChange(m.id as AIModel);
+                        setIsModuleMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-200 ${
+                        selectedAIModel === m.id 
+                          ? 'bg-zinc-800/80 border border-zinc-700 shadow-inner' 
+                          : 'hover:bg-zinc-800/40 border border-transparent'
+                      }`}
+                    >
+                      <div className={`w-9 h-9 rounded-xl bg-zinc-900 flex items-center justify-center border border-zinc-800 shadow-sm`}>
+                        {m.icon}
+                      </div>
+                      <div className="text-left">
+                        <p className={`text-[11px] font-bold ${selectedAIModel === m.id ? 'text-white' : 'text-zinc-300'}`}>{m.label}</p>
+                        <p className="text-[9px] text-zinc-500 font-medium">{m.desc}</p>
+                      </div>
+                      {selectedAIModel === m.id && (
+                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <NotificationBell user={currentUser} />
+        </div>
+        <div className="flex bg-zinc-900/80 p-1 rounded-xl border border-zinc-800/50 shadow-sm">
+          {modes.map((mode) => {
+            const disabled = !canUseMode(mode.minPlan);
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => !disabled && setMode(mode.id)}
+                className={`relative flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  currentMode === mode.id 
+                    ? 'text-white shadow-sm' 
+                    : disabled ? 'text-zinc-600 cursor-not-allowed' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {currentMode === mode.id && (
+                  <motion.div
+                    layoutId="mode-pill"
+                    className="absolute inset-0 bg-zinc-800 rounded-lg -z-10"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className={currentMode === mode.id ? mode.color : ''}>{mode.icon}</span>
+                <span>{mode.label}</span>
+                {disabled && <CrownIcon />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-8 scrollbar-hide relative">
+        <div className="max-w-3xl mx-auto w-full space-y-8">
+        <AnimatePresence>
+          {showCamera && (
+            <CameraCapture 
+              onCapture={handleCameraCapture}
+              onClose={() => setShowCamera(false)}
+            />
+          )}
+        </AnimatePresence>
+        {!isModuleEnabled && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-md p-6">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-10 text-center space-y-6 shadow-2xl"
+            >
+              <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto border border-red-500/20">
+                <Ban className="w-10 h-10 text-red-500" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-white tracking-tight">Module Disabled 🚫</h3>
+                <p className="text-zinc-400 font-medium leading-relaxed">
+                  The <span className="text-white font-bold">{moduleInfo.label}</span> feature has been temporarily disabled by the administrator.
+                </p>
+              </div>
+              <div className="pt-4">
+                <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em]">Please check back later</p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {isLoading ? (
+          <ChatSkeleton />
+        ) : messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center space-y-8 max-w-2xl mx-auto mt-10">
+            <div className="w-20 h-20 bg-gradient-to-br from-zinc-800 to-zinc-900 rounded-3xl flex items-center justify-center border border-zinc-700/50 shadow-2xl shrink-0">
+              <Sparkles className="w-10 h-10 text-blue-400" />
+            </div>
+            <div className="space-y-3 px-4">
+              <h2 className="text-3xl font-semibold text-white tracking-tight">How can I help you today?</h2>
+              <p className="text-zinc-400 text-base leading-relaxed max-w-md mx-auto">
+                I'm your next-generation AI assistant. Choose a mode and let's build something amazing.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full px-4 mt-8">
+              <QuickAction label="Write a blog post" onClick={() => setInput("Write a blog post about the future of AI")} />
+              <QuickAction label="Debug my code" onClick={() => setInput("Can you help me debug this React component?")} />
+              <QuickAction label="Business ideas" onClick={() => setInput("Give me 5 viral business ideas for 2026")} />
+              <QuickAction label="Prompt enhancer" onClick={() => setInput("Enhance this prompt: 'make a cool logo'")} />
+            </div>
+          </div>
+        ) : null}
+
+        {displayedMessages.map((msg, idx) => (
+          <MessageItem 
+            key={msg.id || idx}
+            msg={msg}
+            idx={idx}
+            copiedId={copiedId}
+            handleCopy={handleCopy}
+            onSaveToMemory={onSaveToMemory}
+            formatTime={formatTime}
+            formatSize={formatSize}
+          />
+        ))}
+        {isTyping && (
+          <StreamingMessageItem 
+            selectedAIModel={selectedAIModel}
+            streamingMessage={streamingMessage}
+          />
+        )}
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+
+      {/* Input Area */}
+      <div className="sticky bottom-0 left-0 right-0 px-4 pt-4 pb-4 sm:px-6 sm:pt-6 bg-zinc-950 z-40 border-t border-zinc-800/50 shrink-0" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 1rem)' }}>
+        <div className="absolute top-0 left-0 right-0 h-20 -translate-y-full bg-gradient-to-t from-zinc-950 to-transparent pointer-events-none" />
+        <div className="max-w-3xl mx-auto relative">
+          
+          {/* Attachment Preview & Analysis Modes */}
+          <AnimatePresence>
+            {(attachment || isProcessing) && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="mb-3 flex flex-col gap-3"
+              >
+                <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl inline-flex items-center gap-3 relative shadow-lg self-start">
+                  {!isProcessing && (
+                    <button 
+                      type="button"
+                      onClick={() => setAttachment(null)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-zinc-700 hover:bg-zinc-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors z-10"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  
+                  {isProcessing ? (
+                    <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                    </div>
+                  ) : attachment?.type === 'image' ? (
+                    <img src={attachment.url} alt="Preview" className="w-12 h-12 rounded-lg object-cover bg-black" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center">
+                      {attachment?.mimeType === 'application/pdf' ? <FileSearch className="w-6 h-6 text-red-400" /> : <FileText className="w-6 h-6 text-blue-400" />}
+                    </div>
+                  )}
+                  
+                  <div className="pr-4 max-w-[200px]">
+                    <p className="text-sm font-medium text-white truncate">
+                      {isProcessing ? 'Processing file...' : attachment?.name}
+                    </p>
+                    <p className="text-xs text-zinc-500 uppercase tracking-wider">
+                      {isProcessing ? 'Please wait' : `${attachment?.type} • ${formatSize(attachment?.size)}`}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Analysis Modes */}
+                {!isProcessing && attachment && (
+                  <div className="flex flex-wrap gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => handleSubmit(undefined, "Summarize this file and extract key points.")}
+                      className="px-3 py-1.5 bg-blue-600/10 border border-blue-500/30 rounded-full text-xs font-bold text-blue-400 hover:bg-blue-600/20 transition-all flex items-center gap-2"
+                    >
+                      <Sparkles className="w-3 h-3" /> Summarize
+                    </button>
+                    {attachment.type === 'file' && (
+                      <button 
+                        type="button"
+                        onClick={() => handleSubmit(undefined, "Explain the code or content in this file.")}
+                        className="px-3 py-1.5 bg-purple-600/10 border border-purple-500/30 rounded-full text-xs font-bold text-purple-400 hover:bg-purple-600/20 transition-all flex items-center gap-2"
+                      >
+                        <FileCode className="w-3 h-3" /> Explain Content
+                      </button>
+                    )}
+                    <button 
+                      type="button"
+                      onClick={() => handleSubmit(undefined, "Extract key data points and insights from this.")}
+                      className="px-3 py-1.5 bg-emerald-600/10 border border-emerald-500/30 rounded-full text-xs font-bold text-emerald-400 hover:bg-emerald-600/20 transition-all flex items-center gap-2"
+                    >
+                      <FileJson className="w-3 h-3" /> Extract Insights
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <form onSubmit={handleSubmit} className="relative group shadow-2xl flex items-end gap-2" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}>
+            
+            {/* Attach Menu */}
+            <div className="relative" ref={attachMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowAttachMenu(!showAttachMenu)}
+                className="p-3.5 bg-zinc-900 border border-zinc-700/50 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-all shadow-sm"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+
+              <AnimatePresence>
+                {showAttachMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute bottom-full left-0 mb-2 w-48 glass-panel border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left"
+                    >
+                      <FileText className="w-4 h-4" /> Upload File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { photoInputRef.current?.click(); setShowAttachMenu(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left border-t border-zinc-800/50"
+                    >
+                      <ImageIcon className="w-4 h-4" /> Upload Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startCamera}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left border-t border-zinc-800/50"
+                    >
+                      <Camera className="w-4 h-4" /> Camera
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="relative flex-1">
+              <textarea
+                value={input}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                placeholder={isRecording ? "Listening..." : (isModuleEnabled ? moduleInfo.placeholder : "Feature disabled by admin...")}
+                rows={1}
+                disabled={!isModuleEnabled || isTyping}
+                className={`w-full glass-panel border border-white/10 text-white rounded-3xl pl-6 pr-24 py-4 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-500 resize-none overflow-hidden min-h-[56px] max-h-[200px] depth-shadow ${(!isModuleEnabled || isTyping) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                style={{ height: 'auto' }}
+              />
+              <AnimatePresence mode="wait">
+                {isTyping ? (
+                  <motion.button
+                    key="stop-button"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    type="button"
+                    onClick={onStopGenerating}
+                    className="absolute right-2 bottom-2 p-2.5 rounded-full bg-red-500 text-white shadow-lg flex items-center gap-2 px-4"
+                  >
+                    <div className="w-2 h-2 bg-white rounded-sm animate-pulse" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Stop ⛔</span>
+                  </motion.button>
+                ) : (
+                  <div className="absolute right-2 bottom-2 flex items-center gap-2 z-20">
+                    {privacyMode && (
+                      <motion.div 
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-full text-[10px] font-bold text-blue-400 uppercase tracking-wider"
+                      >
+                        <Lock className="w-3 h-3" />
+                        Private
+                      </motion.div>
+                    )}
+                    
+                    {/* Mic Button */}
+                    <motion.button
+                      type="button"
+                      onClick={(e) => toggleRecording(e)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      disabled={!isModuleEnabled}
+                      className={`p-2.5 rounded-full transition-all flex items-center justify-center relative z-20 ${
+                        isRecording 
+                          ? 'bg-red-500/20 text-red-500' 
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
+                      } ${!isModuleEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title={isRecording ? "Stop recording" : "Voice input"}
+                    >
+                      {isRecording && (
+                        <motion.div 
+                          animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                          className="absolute inset-0 bg-red-500 rounded-full"
+                        />
+                      )}
+                      <Mic className={`w-4 h-4 relative z-10 ${isRecording ? 'animate-pulse' : ''}`} />
+                    </motion.button>
+
+                    <motion.button
+                      key="send-button"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      type="button"
+                      onClick={(e) => handleSubmit(e)}
+                      disabled={!isModuleEnabled || (!input.trim() && !attachment) || isProcessing}
+                      className={`p-2.5 rounded-full transition-all ${
+                        isModuleEnabled && (input.trim() || attachment) && !isProcessing
+                          ? 'bg-white text-black hover:bg-zinc-200 shadow-md' 
+                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 ml-0.5" />}
+                    </motion.button>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+          </form>
+          <p className="text-[11px] text-zinc-500 text-center mt-3 font-medium">
+            Claude can make mistakes. Check important info.
+          </p>
+        </div>
+      </div>
+
+      {/* Hidden Inputs */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        accept=".txt,.pdf,.json,.js,.html,.css" 
+        onChange={(e) => handleFileSelect(e, 'file')} 
+      />
+      <input 
+        type="file" 
+        ref={photoInputRef} 
+        className="hidden" 
+        accept="image/*" 
+        onChange={(e) => handleFileSelect(e, 'image')} 
+      />
+    </div>
+  );
+});
+
+function QuickAction({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button 
+      type="button"
+      onClick={onClick}
+      className="p-4 glass-card border border-white/5 rounded-2xl text-sm text-zinc-400 hover:bg-white/5 hover:text-white hover:border-white/10 transition-all text-left depth-shadow 3d-button glow-hover group"
+    >
+      <span className="group-hover:translate-x-1 inline-block transition-transform duration-200">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function CrownIcon() {
+  return (
+    <div className="ml-1 text-amber-500">
+      <Crown className="w-3 h-3 fill-amber-500" />
+    </div>
+  );
+}
+
