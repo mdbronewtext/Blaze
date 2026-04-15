@@ -235,8 +235,14 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
             </div>
 
             <div className="relative">
-              <div className="aspect-square bg-gradient-to-br from-zinc-800 to-zinc-950 rounded-[3rem] border border-zinc-800 overflow-hidden shadow-2xl">
-                <div className="absolute inset-0 bg-[url('https://picsum.photos/seed/ai/800/800')] opacity-20 grayscale" />
+              <div className="aspect-square bg-zinc-900 rounded-[3rem] border border-zinc-800 overflow-hidden shadow-2xl relative">
+                <img 
+                  src="https://picsum.photos/seed/ai/800/800" 
+                  alt="AI Visualization" 
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  className="absolute inset-0 w-full h-full object-cover opacity-20 grayscale"
+                />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-24 h-24 bg-white rounded-3xl flex items-center justify-center shadow-2xl shadow-white/20 animate-bounce">
                     <Zap className="w-12 h-12 text-black fill-black" />
@@ -377,7 +383,13 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
       <section className="py-24">
         <div className="max-w-7xl mx-auto px-6">
           <div className="bg-gradient-to-br from-zinc-800 to-zinc-950 border border-zinc-800 rounded-[3rem] p-12 md:p-20 text-center space-y-8 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-full bg-[url('https://picsum.photos/seed/cta/1200/400')] opacity-10 grayscale pointer-events-none" />
+            <img 
+              src="https://picsum.photos/seed/cta/1200/400" 
+              alt="CTA Background" 
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              className="absolute top-0 left-0 w-full h-full object-cover opacity-10 grayscale pointer-events-none"
+            />
             <div className="relative z-10 space-y-6">
               <h2 className="text-4xl md:text-6xl font-black tracking-tight">Start using Blaze-AI today</h2>
               <p className="text-zinc-400 max-w-xl mx-auto text-lg font-medium">Join thousands of developers and creators building the future with Blaze-AI.</p>

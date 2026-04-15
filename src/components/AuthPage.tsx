@@ -130,6 +130,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
           displayName: name,
           createdAt: serverTimestamp(),
           plan: 'FREE',
+          role: 'user',
           theme: 'dark',
           mode: 'lite'
         });
@@ -179,6 +180,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
           photoURL: user.photoURL,
           createdAt: serverTimestamp(),
           plan: 'FREE',
+          role: 'user',
           theme: 'dark',
           mode: 'lite'
         });

@@ -1,5 +1,5 @@
 {
-  "name": "BLAZE-AI",
-  "description": "Next-generation AI assistant experience with chat, projects, and advanced AI modes.",
+  "name": "BLAZE-AI | Next-Gen AI Assistant",
+  "description": "The ultimate AI workspace for developers and creators. Chat with GPT-4o, Claude 3.5, and Gemini. Generate code, images, and automate workflows instantly.",
   "requestFramePermissions": ["camera", "microphone"]
 }

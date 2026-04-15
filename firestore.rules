@@ -47,7 +47,7 @@ service cloud.firestore {
       return isAuthenticated() && 
              (request.auth.token.email == "officialdevloper19995@gmail.com" || 
               request.auth.token.email == "priyanshukumarrxl948@gmail.com" ||
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner');
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'owner');
     }
 
     function isOwner(userId) {
@@ -56,7 +56,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-             (isSystemOwner() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+             (isSystemOwner() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin');
     }
 
     function isNotBanned() {
@@ -78,7 +78,7 @@ service cloud.firestore {
     function isValidUser(data) {
       let allowedFields = ['uid', 'userId', 'email', 'displayName', 'name', 'username', 'photoURL', 'photo', 'plan', 'createdAt', 'updatedAt', 'theme', 'mode', 'currentModule', 'selectedModel', 'twoFactorEnabled', 'role', 'status', 'credits', 'dailyUsage', 'totalUsage', 'lastReset', 'lastLogin'];
       return hasOnlyAllowedFields(allowedFields) &&
-             (data.get('uid', '') == request.auth.uid || data.get('userId', '') == request.auth.uid) &&
+             (isSystemOwner() || isAdmin() || data.get('uid', '') == request.auth.uid || data.get('userId', '') == request.auth.uid) &&
              data.email is string &&
              (!('displayName' in data) || data.displayName is string) &&
              (!('name' in data) || data.name is string) &&
@@ -183,19 +183,19 @@ service cloud.firestore {
     // }
 
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isAuthenticated() && request.auth.uid == userId && 
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin()) && 
                     isValidUser(request.resource.data) &&
-                    (isSystemOwner() || (request.resource.data.role == 'user' && request.resource.data.plan == 'FREE'));
-      allow update: if isAuthenticated() && request.auth.uid == userId && 
+                    (isSystemOwner() || isAdmin() || (request.resource.data.get('role', 'user') == 'user' && request.resource.data.plan == 'FREE'));
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin()) && 
                     isValidUser(request.resource.data) &&
-                    (isSystemOwner() || (
-                      request.resource.data.role == resource.data.role &&
-                      // Allow plan and credits updates for self
-                      (request.resource.data.plan == resource.data.plan || request.resource.data.plan in ['FREE', 'PLUS', 'PRO', 'ELITE']) &&
-                      (request.resource.data.credits == resource.data.get('credits', 0) || request.resource.data.credits is number)
+                    (isSystemOwner() || isAdmin() || (
+                      request.resource.data.get('role', 'user') == resource.data.get('role', 'user') &&
+                      // Normal users CANNOT change their plan or role
+                      request.resource.data.plan == resource.data.plan &&
+                      (request.resource.data.get('credits', 0) == resource.data.get('credits', 0) || request.resource.data.credits is number)
                     ));
-      allow delete: if isSystemOwner();
+      allow delete: if isOwner(userId) || isAdmin();
 
       match /settings/{configId} {
         allow read, write: if request.auth.uid == userId || isSystemOwner();

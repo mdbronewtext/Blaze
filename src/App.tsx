@@ -579,67 +579,27 @@ export default function App() {
         parts: [{ text: m.message }]
       }));
       
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortControllerRef.current.signal,
         body: JSON.stringify({ 
           message: content, 
-          attachment,
           history, 
-          model: selectedAIModel, 
-          memories,
           settings: {
             aiMode: userSettings.aiMode,
-            responseStyle: userSettings.responseStyle,
-            apiKey: userSettings.apiKey
+            responseStyle: userSettings.responseStyle
           }
         })
       });
 
-      if (!response.ok) throw new Error('Failed to fetch');
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullContent = '';
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          
-          try {
-            const parsed = JSON.parse(chunk);
-            if (parsed.reply) {
-              fullContent += parsed.reply;
-              setStreamingMessage(fullContent);
-              continue;
-            }
-          } catch (e) {
-            // Not a plain JSON object, proceed with SSE parsing
-          }
-
-          const lines = chunk.split('\n');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const dataStr = line.slice(6);
-              if (dataStr === '[DONE]') break;
-              try {
-                const data = JSON.parse(dataStr);
-                if (data.text) {
-                  fullContent += data.text;
-                  setStreamingMessage(fullContent);
-                }
-              } catch (e) {
-                console.error('Error parsing stream chunk:', e);
-              }
-            }
-          }
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch AI response');
       }
+
+      const data = await response.json();
+      const fullContent = data.text || "No response received";
       
       if (shouldSave) {
         await addDoc(collection(db, 'chats'), {
@@ -1066,7 +1026,7 @@ export default function App() {
                     <SupportPanel user={user} onNavigate={handleNavigate} />
                   </div>
                 )}
-                {activePage === 'admin' && user?.role === 'owner' && (
+                {activePage === 'admin' && (user?.role === 'owner' || user?.role === 'admin') && (
                   <AdminPanel currentUser={user} onClose={() => handleNavigate('chat')} moduleSettings={moduleSettings} />
                 )}
                 {activePage === 'pricing' && (

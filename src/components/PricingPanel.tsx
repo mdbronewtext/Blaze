@@ -31,6 +31,12 @@ export function PricingPanel({ user, planSettings, onClose, onUpgrade }: Pricing
     if (newIndex < currentIndex) {
       setConfirmPlan(planId);
     } else {
+      // Normal users cannot self-upgrade. Only admin/owner can.
+      if (user?.role !== 'admin' && user?.role !== 'owner') {
+        alert("Subscription system is coming soon! 🚀\nPlease contact an administrator to request a plan upgrade.");
+        return;
+      }
+      
       setIsProcessing(true);
       await onUpgrade(planId);
       setIsProcessing(false);
@@ -173,7 +179,7 @@ export function PricingPanel({ user, planSettings, onClose, onUpgrade }: Pricing
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <>
-                        {isCurrent ? 'Active' : isDowngrade ? 'Downgrade' : 'Upgrade'} 
+                        {isCurrent ? 'Active' : isDowngrade ? 'Downgrade' : (user?.role === 'admin' || user?.role === 'owner' ? 'Upgrade' : 'Coming Soon')} 
                         {!isCurrent && <ArrowRight className="w-4 h-4" />}
                       </>
                     )}

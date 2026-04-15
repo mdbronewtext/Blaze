@@ -27,12 +27,14 @@ export function NotificationBell({ user, settings }: NotificationBellProps) {
   useEffect(() => {
     if (!user?.uid) return;
     
-    // For admins, we also want to see 'admin' notifications
-    const targetId = user.role === 'admin' || user.role === 'owner' ? 'admin' : user.uid;
+    const targetIds = [user.uid];
+    if (user.role === 'admin' || user.role === 'owner') {
+      targetIds.push('admin');
+    }
     
     const q = query(
       collection(db, 'notifications'),
-      where('userId', 'in', [user.uid, 'admin']),
+      where('userId', 'in', targetIds),
       orderBy('createdAt', 'desc')
     );
 
