@@ -3,9 +3,11 @@ import { motion } from 'motion/react';
 import { 
   User, Globe, Palette, Brain, Lock, Bell, Plug, 
   CreditCard, Database, LifeBuoy, AlertTriangle, 
-  ToggleLeft, ToggleRight, Zap, Loader2, X, ArrowLeft
+  ToggleLeft, ToggleRight, Zap, Loader2, X, ArrowLeft, Check,
+  RefreshCcw, Pipette
 } from 'lucide-react';
-import { UserProfile, UserSettings } from '../types';
+import { UserProfile, UserSettings, ThemePreset, CustomColors } from '../types';
+import { THEME_PRESETS } from '../lib/themes';
 
 interface SettingsPanelProps {
   user: UserProfile | null;
@@ -162,6 +164,66 @@ const SelectGroup = ({ label, options, value, onChange }: any) => (
   </div>
 );
 
+const ThemeCard = ({ preset, isActive, onClick, colors }: any) => (
+  <button
+    onClick={() => onClick(preset.id)}
+    className={`relative group flex flex-col p-3 rounded-2xl transition-all duration-300 ${
+      isActive 
+        ? 'scale-[1.02] bg-white/5 border-accent' 
+        : 'hover:scale-[1.02] bg-zinc-950/40 border-white/5'
+    } border-2 overflow-hidden`}
+  >
+    <div 
+      className="w-full h-20 rounded-xl overflow-hidden border border-white/5 mb-2.5 flex flex-col shadow-inner relative"
+      style={{ backgroundColor: preset.colors.bg }}
+    >
+      <div className="flex-1 p-2.5 space-y-2">
+        <div className="w-1/2 h-2.5 rounded-full" style={{ backgroundColor: preset.colors.accent }} />
+        <div className="w-full h-10 rounded-xl border border-white/5 shadow-2xl" style={{ backgroundColor: preset.colors.card }} />
+      </div>
+      {isActive && (
+        <motion.div 
+          layoutId="active-glow"
+          className="absolute inset-0 ring-2 ring-accent ring-inset pointer-events-none"
+          initial={false}
+          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+        />
+      )}
+    </div>
+    <div className="flex items-center justify-between px-1">
+      <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${isActive ? 'text-accent' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
+        {preset.name}
+      </span>
+      {isActive && (
+        <motion.div 
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="w-4 h-4 rounded-full bg-accent flex items-center justify-center shadow-[0_0_10px_rgba(var(--accent-rgb),0.5)]"
+        >
+          <Check className="w-2.5 h-2.5 text-white stroke-[3px]" />
+        </motion.div>
+      )}
+    </div>
+  </button>
+);
+
+const ColorPicker = ({ label, value, onChange }: { label: string, value: string, onChange: (v: string) => void }) => (
+  <div className="flex items-center justify-between group">
+    <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{label}</label>
+    <div className="flex items-center gap-3">
+      <span className="text-[10px] font-mono text-zinc-600 group-hover:text-zinc-400 transition-colors uppercase">{value}</span>
+      <div className="relative w-8 h-8 rounded-full border-2 border-white/10 overflow-hidden cursor-pointer hover:border-white/20 transition-all active:scale-90 shadow-xl">
+        <input 
+          type="color" 
+          value={value} 
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-[-4px] w-[calc(100%+8px)] h-[calc(100%+8px)] cursor-pointer bg-transparent"
+        />
+      </div>
+    </div>
+  </div>
+);
+
 export function SettingsPanel({ 
   user, 
   settings,
@@ -265,11 +327,93 @@ export function SettingsPanel({
           </div>
         </Section>
 
-        {/* APPEARANCE */}
+        {/* THEMES & APPEARANCE */}
         <Section title="Appearance" icon={Palette}>
-          <SelectGroup label="Theme" options={['Dark', 'Light', 'System']} value={settings.theme.charAt(0).toUpperCase() + settings.theme.slice(1)} onChange={(v: string) => onUpdateSettings({ theme: v.toLowerCase() as any })} />
-          <div className="h-px bg-zinc-800/50" />
-          <SelectGroup label="Font Size" options={['Small', 'Medium', 'Large']} value={settings.fontSize.charAt(0).toUpperCase() + settings.fontSize.slice(1)} onChange={(v: string) => onUpdateSettings({ fontSize: v.toLowerCase() as any })} />
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-white">Theme Presets</h4>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">Choose from a collection of premium themes.</p>
+                </div>
+                {settings.theme !== 'dark' && (
+                  <button 
+                    onClick={() => onUpdateSettings({ theme: 'dark' })}
+                    className="text-[10px] font-bold text-zinc-500 hover:text-white uppercase tracking-widest flex items-center gap-1.5 transition-colors"
+                  >
+                    <RefreshCcw className="w-3 h-3" />
+                    Reset
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {THEME_PRESETS.map((preset) => (
+                  <ThemeCard 
+                    key={preset.id} 
+                    preset={preset} 
+                    isActive={settings.theme === preset.id}
+                    onClick={(id: ThemePreset) => onUpdateSettings({ theme: id })}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="h-px bg-white/5" />
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    Custom Branding {settings.theme === 'custom' && <span className="px-1.5 py-0.5 rounded-md bg-accent/20 text-accent text-[8px] uppercase tracking-[0.2em] font-black">Active</span>}
+                  </h4>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">Fine-tune your personal space with custom colors.</p>
+                </div>
+                <Pipette className={`w-4 h-4 ${settings.theme === 'custom' ? 'text-accent animate-pulse' : 'text-zinc-600'}`} />
+              </div>
+              
+              <div className="p-5 rounded-3xl bg-black/20 border border-white/5 space-y-5">
+                <ColorPicker 
+                  label="Accent Color" 
+                  value={settings.customColors?.accent || '#3b82f6'} 
+                  onChange={(v) => onUpdateSettings({ theme: 'custom', customColors: { ...settings.customColors!, accent: v } })} 
+                />
+                <ColorPicker 
+                  label="Background Color" 
+                  value={settings.customColors?.bg || '#09090b'} 
+                  onChange={(v) => onUpdateSettings({ theme: 'custom', customColors: { ...settings.customColors!, bg: v } })} 
+                />
+                <ColorPicker 
+                  label="Card Background" 
+                  value={settings.customColors?.card || '#18181b'} 
+                  onChange={(v) => onUpdateSettings({ theme: 'custom', customColors: { ...settings.customColors!, card: v } })} 
+                />
+                <ColorPicker 
+                  label="Text Color" 
+                  value={settings.customColors?.text || '#fafafa'} 
+                  onChange={(v) => onUpdateSettings({ theme: 'custom', customColors: { ...settings.customColors!, text: v } })} 
+                />
+              </div>
+              
+              {settings.theme === 'custom' && (
+                <motion.p 
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-[10px] text-accent font-bold uppercase tracking-widest text-center"
+                >
+                  ✨ Custom branding applied in real-time
+                </motion.p>
+              )}
+            </div>
+
+            <div className="h-px bg-white/5" />
+            
+            <SelectGroup 
+              label="Font Size" 
+              options={['Small', 'Medium', 'Large']} 
+              value={settings.fontSize.charAt(0).toUpperCase() + settings.fontSize.slice(1)} 
+              onChange={(v: string) => onUpdateSettings({ fontSize: v.toLowerCase() as any })} 
+            />
+          </div>
         </Section>
 
         {/* AI SETTINGS */}

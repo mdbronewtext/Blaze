@@ -27,16 +27,18 @@ export function NotificationBell({ user, settings }: NotificationBellProps) {
   useEffect(() => {
     if (!user?.uid) return;
     
-    const targetIds = [user.uid];
-    if (user.role === 'admin' || user.role === 'owner') {
-      targetIds.push('admin');
-    }
-    
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', 'in', targetIds),
-      orderBy('createdAt', 'desc')
-    );
+    // For admins, we also want to see 'admin' notifications
+    const q = (user.role === 'admin' || user.role === 'owner')
+      ? query(
+          collection(db, 'notifications'),
+          where('userId', 'in', [user.uid, 'admin']),
+          orderBy('createdAt', 'desc')
+        )
+      : query(
+          collection(db, 'notifications'),
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc')
+        );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppNotification)));

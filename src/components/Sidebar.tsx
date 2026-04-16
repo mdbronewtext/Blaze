@@ -32,7 +32,7 @@ import {
   CheckCircle,
   X
 } from 'lucide-react';
-import { ChatThread, UserProfile, AIModule, PlanSettings, ModuleSettings, UserSettings } from '../types';
+import { ChatThread, UserProfile, PlanSettings, UserSettings } from '../types';
 import { NotificationBell } from './NotificationBell';
 
 interface SidebarProps {
@@ -41,12 +41,9 @@ interface SidebarProps {
   chats: ChatThread[];
   currentChatId: string | null;
   activePage: 'chat' | 'settings' | 'profile' | 'pricing' | 'tools' | 'admin' | 'support';
-  currentModule: AIModule;
   planSettings: Record<string, PlanSettings>;
-  moduleSettings: ModuleSettings;
   userSettings?: UserSettings;
   onNavigate: (page: 'chat' | 'settings' | 'profile' | 'pricing' | 'tools' | 'admin' | 'support') => void;
-  onModuleChange: (module: AIModule) => void;
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   onLogout: () => void;
@@ -58,6 +55,7 @@ interface SidebarProps {
   onDeleteChat: (id: string) => void;
   showArchived: boolean;
   onToggleArchived: () => void;
+  onComingSoon?: () => void;
 }
 
 export const Sidebar = React.memo(({ 
@@ -66,12 +64,9 @@ export const Sidebar = React.memo(({
   chats, 
   currentChatId,
   activePage,
-  currentModule,
   planSettings,
-  moduleSettings,
   userSettings,
   onNavigate,
-  onModuleChange,
   onNewChat, 
   onSelectChat, 
   onLogout,
@@ -82,7 +77,8 @@ export const Sidebar = React.memo(({
   onArchiveChat,
   onDeleteChat,
   showArchived,
-  onToggleArchived
+  onToggleArchived,
+  onComingSoon
 }: SidebarProps) => {
   const isOwner = user?.role === 'owner';
   const [menuOpenId, setMenuOpenId] = React.useState<string | null>(null);
@@ -142,7 +138,7 @@ export const Sidebar = React.memo(({
           }}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className="w-full flex items-center gap-2 px-4 py-3 bg-white text-black rounded-xl font-semibold hover:bg-zinc-200 transition-all"
+          className="w-full flex items-center gap-2 px-4 py-3 bg-accent text-white rounded-xl font-semibold hover:opacity-90 transition-all border border-white/10"
         >
           <Plus className="w-5 h-5" />
           <span>New Chat</span>
@@ -151,64 +147,6 @@ export const Sidebar = React.memo(({
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 space-y-6 py-4">
-        {/* Modules Section */}
-        <div className="space-y-2">
-          <div className="px-3 flex items-center gap-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-            <Box className="w-3 h-3" />
-            <span>Modules</span>
-          </div>
-          <div className="space-y-1">
-            {(isOwner || moduleSettings.chat) && (
-              <SidebarItem 
-                icon={<MessageSquare className="w-4 h-4" />} 
-                label="AI Chat" 
-                active={currentModule === 'chat' && activePage === 'chat'} 
-                onClick={() => {
-                  onModuleChange('chat');
-                  onNavigate('chat');
-                }}
-                disabled={!isOwner && !moduleSettings.chat}
-              />
-            )}
-            {(isOwner || moduleSettings.code) && (
-              <SidebarItem 
-                icon={<Code2 className="w-4 h-4" />} 
-                label="Code Master" 
-                active={currentModule === 'code' && activePage === 'chat'} 
-                onClick={() => {
-                  onModuleChange('code');
-                  onNavigate('chat');
-                }}
-                disabled={!isOwner && !moduleSettings.code}
-              />
-            )}
-            {(isOwner || moduleSettings.image) && (
-              <SidebarItem 
-                icon={<ImageIcon className="w-4 h-4" />} 
-                label="Vision AI" 
-                active={currentModule === 'image' && activePage === 'chat'} 
-                onClick={() => {
-                  onModuleChange('image');
-                  onNavigate('chat');
-                }}
-                disabled={!isOwner && !moduleSettings.image}
-              />
-            )}
-            {(isOwner || moduleSettings.search) && (
-              <SidebarItem 
-                icon={<Search className="w-4 h-4" />} 
-                label="Research" 
-                active={currentModule === 'research' && activePage === 'chat'} 
-                onClick={() => {
-                  onModuleChange('research');
-                  onNavigate('chat');
-                }}
-                disabled={!isOwner && !moduleSettings.search}
-              />
-            )}
-          </div>
-        </div>
-
         {/* Main Links */}
         <div className="space-y-1">
           <SidebarItem 
@@ -231,7 +169,7 @@ export const Sidebar = React.memo(({
             label="Memory" 
             active={activePage === 'tools'} 
             onClick={() => onNavigate('tools')}
-            disabled={!isOwner && !moduleSettings.tools}
+            onComingSoon={onComingSoon}
           />
           <SidebarItem 
             icon={<User className="w-4 h-4" />} 
@@ -307,9 +245,9 @@ export const Sidebar = React.memo(({
                       />
                     )}
                     {chat.isPinned ? (
-                      <Pin className="w-3.5 h-3.5 text-blue-400 fill-blue-400" />
+                      <Pin className="w-3.5 h-3.5 text-accent fill-accent" />
                     ) : (
-                      <MessageSquare className={`w-4 h-4 ${isActive ? 'text-white' : 'opacity-50 group-hover:opacity-100'} transition-opacity`} />
+                      <MessageSquare className={`w-4 h-4 ${isActive ? 'text-accent' : 'opacity-50 group-hover:opacity-100'} transition-opacity`} />
                     )}
                     <span className={`truncate flex-1 ${isActive ? 'font-semibold' : 'font-medium'}`}>{chat.title}</span>
                     
@@ -413,7 +351,13 @@ export const Sidebar = React.memo(({
             </p>
             <button 
               type="button"
-              onClick={() => onNavigate('pricing')}
+              onClick={() => {
+                if (onComingSoon) {
+                  onComingSoon();
+                } else {
+                  onNavigate('pricing');
+                }
+              }}
               className="w-full py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg transition-colors"
             >
               View Plans
@@ -589,23 +533,29 @@ export const Sidebar = React.memo(({
   );
 });
 
-function SidebarItem({ icon, label, active = false, onClick, disabled = false }: { icon: React.ReactNode, label: string, active?: boolean, onClick?: () => void, disabled?: boolean }) {
+function SidebarItem({ icon, label, active = false, onClick, disabled = false, onComingSoon }: { icon: React.ReactNode, label: string, active?: boolean, onClick?: () => void, disabled?: boolean, onComingSoon?: () => void }) {
   return (
     <motion.button 
       type="button"
-      onClick={disabled ? undefined : onClick}
+      onClick={(e) => {
+        if (disabled && onComingSoon) {
+          e.preventDefault();
+          onComingSoon();
+        } else if (onClick) {
+          onClick();
+        }
+      }}
       whileHover={disabled ? {} : { x: 4, scale: 1.02 }}
       whileTap={disabled ? {} : { scale: 0.95 }}
-      disabled={disabled}
       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all relative group ${
       active 
-        ? 'bg-white/10 text-white shadow-[0_0_20px_rgba(255,255,255,0.05)] border border-white/10' 
+        ? 'bg-accent/10 text-accent shadow-[0_0_20px_rgba(var(--accent-rgb),0.05)] border border-accent/20' 
         : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200 border border-transparent hover:border-white/5'
     } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
       {active && (
         <motion.div 
           layoutId="sidebar-active"
-          className="absolute left-0 w-1 h-5 bg-white rounded-r-full shadow-[0_0_10px_#fff]"
+          className="absolute left-0 w-1 h-5 bg-accent rounded-r-full shadow-[0_0_10px_var(--accent-color)]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         />

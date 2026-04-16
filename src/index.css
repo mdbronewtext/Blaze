@@ -19,11 +19,12 @@
   
   --color-white: var(--white);
   --color-black: var(--black);
+  --color-accent: var(--accent-color);
 }
 
 html {
   scroll-behavior: smooth;
-  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, font-size 0.3s ease;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, font-size 0.3s ease, --accent-color 0.3s ease;
 }
 
 :root {
@@ -31,6 +32,8 @@ html {
   --bg-color: #ffffff;
   --text-color: #09090b;
   --border-color: #e4e4e7;
+  --accent-color: #3b82f6;
+  --card-color: #f4f4f5;
   
   /* Light mode palette (inverted zinc) */
   --zinc-950: #ffffff;
@@ -54,6 +57,8 @@ html {
   --bg-color: #09090b;
   --text-color: #fafafa;
   --border-color: #27272a;
+  --accent-color: #3b82f6;
+  --card-color: #18181b;
   
   /* Dark mode palette (default zinc) */
   --zinc-950: #09090b;

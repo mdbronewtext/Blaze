@@ -58,12 +58,6 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
       desc: "Streamline your workflow with built-in productivity tools and memory systems.",
       icon: <Zap className="w-6 h-6 text-amber-400" />,
       color: "amber"
-    },
-    {
-      title: "Multi-Module System",
-      desc: "Switch seamlessly between specialized modules tailored for different tasks.",
-      icon: <Box className="w-6 h-6 text-rose-400" />,
-      color: "rose"
     }
   ];
 
@@ -350,10 +344,6 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
                     <div className="flex items-center gap-3 text-sm text-zinc-400 font-medium">
                       <Check className="w-4 h-4 text-green-500 shrink-0" />
                       <span>{limit === 1000 ? 'Unlimited' : limit} Requests / day</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-zinc-400 font-medium">
-                      <Check className="w-4 h-4 text-green-500 shrink-0" />
-                      <span className="capitalize">{featuresList.modules.join(', ')} modules</span>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-zinc-400 font-medium">
                       <Check className="w-4 h-4 text-green-500 shrink-0" />

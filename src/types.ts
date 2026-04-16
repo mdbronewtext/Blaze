@@ -18,12 +18,20 @@ export const PLAN_ORDER: Record<Plan, number> = {
 };
 
 export type AIMode = 'lite' | 'smart' | 'beast';
-export type AIModule = 'chat' | 'code' | 'image' | 'research';
-export type AIModel = 'claude' | 'gpt4o' | 'deepseek' | 'grok' | 'llama' | 'auto';
+export type AIModel = string;
+export type ThemePreset = 'light' | 'dark' | 'glass' | 'forest' | 'sunset' | 'midnight' | 'ocean' | 'coffee' | 'rose' | 'custom';
 export type Theme = 'light' | 'dark' | 'system';
 
+export interface CustomColors {
+  accent: string;
+  card: string;
+  text: string;
+  bg: string;
+}
+
 export interface UserSettings {
-  theme: 'dark' | 'light' | 'system';
+  theme: ThemePreset;
+  customColors?: CustomColors;
   fontSize: 'small' | 'medium' | 'large';
   aiMode: 'fast' | 'smart' | 'pro';
   responseStyle: 'short' | 'detailed' | 'step-by-step';
@@ -50,7 +58,6 @@ export interface UserProfile {
   lastLogin?: any;
   theme: Theme;
   mode: AIMode;
-  currentModule?: AIModule;
   selectedModel?: AIModel;
   credits?: number;
   dailyUsage?: number;
@@ -86,7 +93,7 @@ export interface Message {
   timestamp: any;
   chatId?: string;
   attachment?: Attachment;
-  modelUsed?: 'claude' | 'gpt4o' | 'deepseek' | 'grok' | 'llama';
+  modelUsed?: AIModel;
   isStopped?: boolean;
 }
 
@@ -105,31 +112,24 @@ export interface FirestoreErrorInfo {
   authInfo: any;
 }
 
-export interface ModuleConfig {
-  id: string;
-  name: string;
-  type: AIModule;
-  isEnabled: boolean;
-  apiKey?: string;
-  limit?: number;
-  status: 'active' | 'inactive';
-}
-
 export interface SystemSettings {
   id: 'global';
   temperature: number;
   defaultModel: AIModel;
   responseStyle: string;
-  features: {
-    codeGen: boolean;
-    imageGen: boolean;
-    search: boolean;
-  };
   globalSystemPrompt: string;
   rateLimits: {
     free: number;
     pro: number;
   };
+  models?: {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    type: string;
+    enabled: boolean;
+  }[];
 }
 
 export interface RedeemCode {
@@ -181,13 +181,6 @@ export interface PlanSettings {
   name: Plan;
   price: number;
   dailyLimit: number;
-  features: {
-    chat: boolean;
-    code: boolean;
-    image: boolean;
-    tools: boolean;
-    priority: boolean;
-  };
   maxTokens: number;
   speed: 'slow' | 'medium' | 'fast';
   isEnabled: boolean;
@@ -209,15 +202,6 @@ export interface AppNotification {
   read: boolean;
   createdAt: any;
   link?: string;
-}
-
-export interface ModuleSettings {
-  chat: boolean;
-  code: boolean;
-  image: boolean;
-  tools: boolean;
-  api: boolean;
-  search: boolean;
 }
 
 export interface Broadcast {

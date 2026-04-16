@@ -53,14 +53,15 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
-import { UserProfile, ModuleConfig, SystemSettings, RedeemCode, AdminLog, AIModule, PlanSettings, Plan, AppSettings, OperationType, ModuleSettings, SupportTicket, Broadcast } from '../types';
+import { UserProfile, SystemSettings, RedeemCode, AdminLog, PlanSettings, Plan, AppSettings, OperationType, SupportTicket, Broadcast } from '../types';
 import { PLAN_PRICING, PLAN_FEATURES, PLAN_LIMITS } from '../lib/subscription';
 import { sendNotification } from '../lib/notifications';
 
 interface AdminPanelProps {
   currentUser: UserProfile;
-  moduleSettings: ModuleSettings;
   onClose: () => void;
+  aiModels: any[];
+  onToggleModel: (id: string) => void;
 }
 
 const FullScreenPanel = ({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) => {
@@ -100,7 +101,7 @@ const FullScreenPanel = ({ title, onClose, children }: { title: string, onClose:
   );
 };
 
-export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelProps) {
+export function AdminPanel({ currentUser, onClose, aiModels, onToggleModel }: AdminPanelProps) {
   const isOwner = currentUser.role === 'owner';
   const isAdmin = currentUser.role === 'admin';
 
@@ -123,7 +124,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
     );
   }
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'modules' | 'users' | 'ai' | 'redeem' | 'logs' | 'analytics' | 'codeManager' | 'planSettings' | 'maintenance' | 'moduleSettings' | 'support' | 'broadcasts'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'ai' | 'redeem' | 'logs' | 'analytics' | 'codeManager' | 'planSettings' | 'maintenance' | 'support' | 'broadcasts'>('overview');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [userFilter, setUserFilter] = useState({
@@ -132,9 +133,9 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
     role: 'all'
   });
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'block' | 'unblock' | 'delete' | 'reset' | 'role' | 'plan';
-    userId: string;
-    userName: string;
+    type: 'block' | 'unblock' | 'delete' | 'reset' | 'role' | 'plan' | 'reset_plans' | 'delete_broadcast' | 'delete_code' | 'toggle_maintenance';
+    id: string;
+    title: string;
     data?: any;
   } | null>(null);
   const [supportConfirm, setSupportConfirm] = useState<{
@@ -144,7 +145,6 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
   } | null>(null);
   const [denyReason, setDenyReason] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
-  const [modules, setModules] = useState<ModuleConfig[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [redeemCodes, setRedeemCodes] = useState<RedeemCode[]>([]);
   const [planSettings, setPlanSettings] = useState<PlanSettings[]>([]);
@@ -344,10 +344,6 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
       unsub = onSnapshot(collection(db, 'users'), (s) => {
         setUsers(s.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
-    } else if (activeTab === 'modules') {
-      unsub = onSnapshot(collection(db, 'moduleConfigs'), (s) => {
-        setModules(s.docs.map(d => ({ id: d.id, ...d.data() } as ModuleConfig)));
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'moduleConfigs'));
     } else if (activeTab === 'redeem') {
       unsub = onSnapshot(collection(db, 'redeem'), (s) => {
         setRedeemCodes(s.docs.map(d => ({ id: d.id, ...d.data() } as RedeemCode)));
@@ -390,20 +386,31 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
   };
 
   const handleUpdateUser = async (uid: string, updates: Partial<UserProfile>) => {
-    await setDoc(doc(db, 'users', uid), updates, { merge: true });
-    logAction('Update User', `Updated user ${uid}: ${JSON.stringify(updates)}`);
-    setConfirmAction(null);
+    setIsProcessingAction(true);
+    try {
+      await setDoc(doc(db, 'users', uid), updates, { merge: true });
+      await logAction('Update User', `Updated user ${uid}: ${JSON.stringify(updates)}`);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      alert("Update failed ❌");
+    } finally {
+      setIsProcessingAction(false);
+      setConfirmAction(null);
+    }
   };
 
   const handleDeleteUser = async (uid: string) => {
-    await deleteDoc(doc(db, 'users', uid));
-    logAction('Delete User', `Deleted user ${uid}`);
-    setConfirmAction(null);
-  };
-
-  const handleToggleModule = async (moduleId: string, isEnabled: boolean) => {
-    await setDoc(doc(db, 'moduleConfigs', moduleId), { isEnabled, status: isEnabled ? 'active' : 'inactive' }, { merge: true });
-    logAction('Toggle Module', `${isEnabled ? 'Enabled' : 'Disabled'} module ${moduleId}`);
+    setIsProcessingAction(true);
+    try {
+      await deleteDoc(doc(db, 'users', uid));
+      await logAction('Delete User', `Deleted user ${uid}`);
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      alert("Deletion failed ❌");
+    } finally {
+      setIsProcessingAction(false);
+      setConfirmAction(null);
+    }
   };
 
   const handleSaveGlobalSettings = async () => {
@@ -434,34 +441,33 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
   };
 
   const handleResetPlans = async () => {
-    if (!window.confirm("Are you sure you want to reset all plans to default?")) return;
-    const batch = writeBatch(db);
-    const defaultPlans: Record<string, any> = {
-      FREE: { name: 'FREE', price: 0, dailyLimit: 20, features: { chat: true, code: false, image: false, tools: false, priority: false }, maxTokens: 1000, speed: 'slow', isEnabled: true },
-      PRO: { name: 'PRO', price: 2.99, dailyLimit: 100, features: { chat: true, code: true, image: true, tools: false, priority: false }, maxTokens: 4000, speed: 'medium', isEnabled: true },
-      PLUS: { name: 'PLUS', price: 5.99, dailyLimit: 300, features: { chat: true, code: true, image: true, tools: true, priority: true }, maxTokens: 8000, speed: 'medium', isEnabled: true },
-      ELITE: { name: 'ELITE', price: 10.99, dailyLimit: 1000, features: { chat: true, code: true, image: true, tools: true, priority: true }, maxTokens: 16000, speed: 'fast', isEnabled: true }
-    };
-    Object.entries(defaultPlans).forEach(([id, data]) => {
-      batch.set(doc(db, 'planSettings', id), data);
-    });
-    await batch.commit();
-    logAction('Reset Plans', 'All plans reset to default values');
+    setIsProcessingAction(true);
+    try {
+      const batch = writeBatch(db);
+      const defaultPlans: Record<string, any> = {
+        FREE: { name: 'FREE', price: 0, dailyLimit: 20, features: { chat: true, code: false, image: false, tools: false, priority: false }, maxTokens: 1000, speed: 'slow', isEnabled: true },
+        PRO: { name: 'PRO', price: 2.99, dailyLimit: 100, features: { chat: true, code: true, image: true, tools: false, priority: false }, maxTokens: 4000, speed: 'medium', isEnabled: true },
+        PLUS: { name: 'PLUS', price: 5.99, dailyLimit: 300, features: { chat: true, code: true, image: true, tools: true, priority: true }, maxTokens: 8000, speed: 'medium', isEnabled: true },
+        ELITE: { name: 'ELITE', price: 10.99, dailyLimit: 1000, features: { chat: true, code: true, image: true, tools: true, priority: true }, maxTokens: 16000, speed: 'fast', isEnabled: true }
+      };
+      Object.entries(defaultPlans).forEach(([id, data]) => {
+        batch.set(doc(db, 'planSettings', id), data);
+      });
+      await batch.commit();
+      await logAction('Reset Plans', 'All plans reset to default values');
+      alert("Plans reset successfully! ✅");
+    } catch (error) {
+      console.error("Error resetting plans:", error);
+      alert("Reset failed ❌");
+    } finally {
+      setIsProcessingAction(false);
+      setConfirmAction(null);
+    }
   };
 
   const handleUpdateAppSettings = async (updates: Partial<AppSettings>) => {
     await setDoc(doc(db, 'appSettings', 'global'), updates, { merge: true });
     logAction('Update App Settings', `Updated app settings: ${JSON.stringify(updates)}`);
-  };
-
-  const handleToggleGlobalModule = async (key: keyof ModuleSettings, value: boolean) => {
-    console.log(`Toggle module: ${key} to ${value}`);
-    try {
-      await setDoc(doc(db, 'moduleSettings', 'global'), { [key]: value }, { merge: true });
-      logAction('Toggle Global Module', `${value ? 'Enabled' : 'Disabled'} global module: ${key}`);
-    } catch (error) {
-      console.error("Error updating module settings:", error);
-    }
   };
 
   if (loading) {
@@ -542,18 +548,6 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
             onClick={() => setActiveTab('overview')} 
           />
           <AdminNavItem 
-            icon={<Box className="w-4 h-4" />} 
-            label="Modules" 
-            active={activeTab === 'modules'} 
-            onClick={() => setActiveTab('modules')} 
-          />
-          <AdminNavItem 
-            icon={<Settings className="w-4 h-4" />} 
-            label="Module Settings" 
-            active={activeTab === 'moduleSettings'} 
-            onClick={() => setActiveTab('moduleSettings')} 
-          />
-          <AdminNavItem 
             icon={<Users className="w-4 h-4" />} 
             label="Users" 
             active={activeTab === 'users'} 
@@ -620,7 +614,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
           <div className="space-y-8">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <StatCard title="Total Users" value={users.length} icon={<Users className="w-5 h-5" />} color="blue" />
-              <StatCard title="Active Modules" value={modules.filter(m => m.isEnabled).length} icon={<Box className="w-5 h-5" />} color="emerald" />
+              <StatCard title="Total Models" value={aiModels.length} icon={<Box className="w-5 h-5" />} color="emerald" />
               <StatCard title="Redeem Codes" value={redeemCodes.length} icon={<Ticket className="w-5 h-5" />} color="amber" />
               <StatCard title="Daily Requests" value="1,284" icon={<Zap className="w-5 h-5" />} color="white" />
             </div>
@@ -683,17 +677,17 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
 
                   <div className="bg-zinc-900/30 border border-zinc-800 rounded-3xl p-6 space-y-6">
                     <h3 className="text-lg font-bold flex items-center gap-2">
-                      <Box className="w-5 h-5 text-zinc-500" /> Module Status
+                      <Box className="w-5 h-5 text-zinc-500" /> Model Status
                     </h3>
                     <div className="space-y-3">
-                      {modules.slice(0, 4).map(mod => (
+                      {aiModels.slice(0, 4).map(mod => (
                         <div key={mod.id} className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
                           <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${mod.isEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <div className={`w-2 h-2 rounded-full ${mod.enabled !== false ? 'bg-green-500' : 'bg-red-500'}`} />
                             <span className="text-sm font-bold">{mod.name}</span>
                           </div>
-                          <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${mod.isEnabled ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                            {mod.isEnabled ? 'Active' : 'Off'}
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${mod.enabled !== false ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                            {mod.enabled !== false ? 'Active' : 'Off'}
                           </span>
                         </div>
                       ))}
@@ -748,126 +742,6 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
 
       {/* Full Screen Panels */}
       <AnimatePresence>
-        {activeTab === 'moduleSettings' && (
-          <FullScreenPanel title="Global Module Control" onClose={() => setActiveTab('overview')}>
-            <div className="max-w-4xl space-y-8">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold">Module Settings</h2>
-                <p className="text-zinc-500">Enable or disable features globally for all users. Owners always have full access.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[
-                  { key: 'chat', label: 'Chat System', icon: <MessageSquare className="w-5 h-5" />, desc: 'Main AI conversation interface' },
-                  { key: 'code', label: 'Code Generator', icon: <Code2 className="w-5 h-5" />, desc: 'AI-powered coding assistant' },
-                  { key: 'image', label: 'Image Generator', icon: <ImageIcon className="w-5 h-5" />, desc: 'DALL-E 3 image creation' },
-                  { key: 'tools', label: 'Tools & Plugins', icon: <Zap className="w-5 h-5" />, desc: 'External tool integrations' },
-                  { key: 'api', label: 'API Access', icon: <Box className="w-5 h-5" />, desc: 'External API endpoints' },
-                  { key: 'search', label: 'Search Engine', icon: <Search className="w-5 h-5" />, desc: 'Real-time web search' }
-                ].map((item) => (
-                  <div key={item.key} className="bg-zinc-900/30 border border-zinc-800 rounded-3xl p-6 flex items-center justify-between group hover:border-zinc-700 transition-all">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover:border-zinc-700 transition-all">
-                        {item.icon}
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">{item.label}</h4>
-                        <p className="text-[11px] text-zinc-500 font-medium">{item.desc}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col items-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleGlobalModule(item.key as keyof ModuleSettings, !moduleSettings[item.key as keyof ModuleSettings])}
-                        className={`relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none ${
-                          moduleSettings[item.key as keyof ModuleSettings] ? 'bg-blue-600' : 'bg-zinc-800'
-                        }`}
-                        title="Enable/Disable module globally"
-                      >
-                        <motion.div
-                          animate={{ x: moduleSettings[item.key as keyof ModuleSettings] ? 26 : 2 }}
-                          className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-sm"
-                        />
-                      </button>
-                      <AnimatePresence>
-                        {moduleSettings[item.key as keyof ModuleSettings] ? (
-                          <motion.span 
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="text-[9px] font-black text-green-500 uppercase tracking-widest"
-                          >
-                            Updated ✅
-                          </motion.span>
-                        ) : (
-                          <motion.span 
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="text-[9px] font-black text-zinc-600 uppercase tracking-widest"
-                          >
-                            Disabled 🚫
-                          </motion.span>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </FullScreenPanel>
-        )}
-
-        {activeTab === 'modules' && (
-          <FullScreenPanel title="Module Control System" onClose={() => setActiveTab('overview')}>
-            <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold">Module Management</h2>
-                  <button type="button" className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-xl font-bold text-sm hover:opacity-90 transition-all">
-                    <Plus className="w-4 h-4" /> Add Module
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {modules.map(mod => (
-                    <div key={mod.id} className="bg-zinc-900/30 border border-zinc-800 rounded-3xl p-6 space-y-6">
-                      <div className="flex items-center justify-between">
-                        <div className="w-12 h-12 bg-zinc-800 rounded-2xl flex items-center justify-center">
-                          {mod.type === 'chat' && <MessageSquare className="w-6 h-6" />}
-                          {mod.type === 'code' && <Code2 className="w-6 h-6" />}
-                          {mod.type === 'image' && <ImageIcon className="w-6 h-6" />}
-                          {mod.type === 'research' && <Search className="w-6 h-6" />}
-                        </div>
-                        <button 
-                          type="button"
-                          onClick={() => handleToggleModule(mod.id, !mod.isEnabled)}
-                          className={`p-2 rounded-xl transition-all ${mod.isEnabled ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}
-                        >
-                          <Power className="w-5 h-5" />
-                        </button>
-                      </div>
-                      <div>
-                        <h4 className="text-lg font-bold">{mod.name}</h4>
-                        <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold">{mod.type} Module</p>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-zinc-500">Status</span>
-                          <span className={mod.isEnabled ? 'text-green-500' : 'text-red-500'}>{mod.isEnabled ? 'Active' : 'Inactive'}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-zinc-500">Rate Limit</span>
-                          <span className="text-white">{mod.limit || 'Unlimited'} / min</span>
-                        </div>
-                      </div>
-                      <button type="button" className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all">
-                        Configure Settings
-                      </button>
-                    </div>
-                  ))}
-                </div>
-            </div>
-          </FullScreenPanel>
-        )}
-
         {activeTab === 'users' && (
           <FullScreenPanel title="User Management" onClose={() => setActiveTab('overview')}>
             <div className="space-y-6">
@@ -954,7 +828,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                             <td className="px-6 py-4">
                               <select 
                                 value={u.plan || 'FREE'}
-                                onChange={(e) => setConfirmAction({ type: 'plan', userId: u.uid, userName: u.displayName || u.email, data: e.target.value })}
+                                onChange={(e) => setConfirmAction({ type: 'plan', id: u.uid, title: u.displayName || u.email, data: e.target.value })}
                                 disabled={u.role === 'owner'}
                                 className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md focus:outline-none bg-zinc-950 border border-zinc-800 ${u.role === 'owner' ? 'text-amber-500' : (u.plan === 'ELITE' ? 'text-purple-500' : u.plan === 'PLUS' ? 'text-amber-500' : u.plan === 'PRO' ? 'text-blue-500' : 'text-zinc-400')}`}
                               >
@@ -974,7 +848,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                                 ) : (
                                   <select 
                                     value={u.role || 'user'}
-                                    onChange={(e) => setConfirmAction({ type: 'role', userId: u.uid, userName: u.displayName || u.email, data: e.target.value })}
+                                    onChange={(e) => setConfirmAction({ type: 'role', id: u.uid, title: u.displayName || u.email, data: e.target.value })}
                                     className="bg-zinc-950 border border-zinc-800 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md focus:outline-none text-zinc-400"
                                   >
                                     <option value="user">User</option>
@@ -1004,7 +878,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                               <div className="flex items-center justify-end gap-2">
                                 <button 
                                   type="button"
-                                  onClick={() => setConfirmAction({ type: u.status === 'blocked' ? 'unblock' : 'block', userId: u.uid, userName: u.displayName || u.email })}
+                                  onClick={() => setConfirmAction({ type: u.status === 'blocked' ? 'unblock' : 'block', id: u.uid, title: u.displayName || u.email })}
                                   disabled={u.role === 'owner'}
                                   className={`p-2 rounded-xl transition-all ${u.status === 'blocked' ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'} ${u.role === 'owner' ? 'opacity-20 cursor-not-allowed' : ''}`}
                                   title={u.status === 'blocked' ? "Unblock User" : "Block User"}
@@ -1013,7 +887,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                                 </button>
                                 <button 
                                   type="button"
-                                  onClick={() => setConfirmAction({ type: 'reset', userId: u.uid, userName: u.displayName || u.email })}
+                                  onClick={() => setConfirmAction({ type: 'reset', id: u.uid, title: u.displayName || u.email })}
                                   disabled={u.role === 'owner'}
                                   className={`p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl transition-all ${u.role === 'owner' ? 'opacity-20 cursor-not-allowed' : ''}`}
                                   title="Reset Usage"
@@ -1022,7 +896,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                                 </button>
                                 <button 
                                   type="button"
-                                  onClick={() => setConfirmAction({ type: 'delete', userId: u.uid, userName: u.displayName || u.email })}
+                                  onClick={() => setConfirmAction({ type: 'delete', id: u.uid, title: u.displayName || u.email })}
                                   disabled={u.role === 'owner'}
                                   className={`p-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-all ${u.role === 'owner' ? 'opacity-20 cursor-not-allowed' : ''}`}
                                   title="Delete User"
@@ -1064,12 +938,22 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                          confirmAction.type === 'unblock' ? 'Unblock User?' :
                          confirmAction.type === 'delete' ? 'Delete User?' :
                          confirmAction.type === 'reset' ? 'Reset Usage?' :
-                         confirmAction.type === 'role' ? 'Change Role?' : 'Change Plan?'}
+                         confirmAction.type === 'role' ? 'Change Role?' : 
+                          confirmAction.type === 'plan' ? 'Change Plan?' :
+                          confirmAction.type === 'reset_plans' ? 'Reset All Plans?' :
+                          confirmAction.type === 'delete_broadcast' ? 'Delete Broadcast?' :
+                          confirmAction.type === 'delete_code' ? 'Delete Redeem Code?' : 
+                          confirmAction.type === 'toggle_maintenance' ? 'Maintenance Mode?' : 'Confirm Action?'}
                       </h3>
                       <p className="text-zinc-400 text-sm leading-relaxed">
-                        Are you sure you want to {confirmAction.type} <span className="text-white font-bold">{confirmAction.userName}</span>?
-                        {confirmAction.type === 'delete' && " This action is irreversible and will remove all user data."}
-                        {confirmAction.type === 'block' && " The user will be immediately restricted from accessing the application."}
+                        {confirmAction.type === 'reset_plans' ? 'Are you sure you want to reset all subscription plans to their default values?' : 
+                         `Are you sure you want to ${confirmAction.type.replace('_', ' ')} `}
+                        {confirmAction.type !== 'reset_plans' && <span className="text-white font-bold">{confirmAction.title}</span>}
+                        {confirmAction.type === 'delete' && "? This action is irreversible and will remove all user data."}
+                        {confirmAction.type === 'block' && "? The user will be immediately restricted from accessing the application."}
+                        {confirmAction.type === 'delete_broadcast' && "? This announcement will be removed from all users' feeds."}
+                        {confirmAction.type === 'delete_code' && "? This code will no longer be redeemable by users."}
+                        {confirmAction.type === 'toggle_maintenance' && `? This will ${confirmAction.data ? 'enable' : 'disable'} maintenance mode for all users.`}
                       </p>
                     </div>
 
@@ -1083,19 +967,42 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                       </button>
                       <button 
                         type="button"
-                        onClick={() => {
-                          if (confirmAction.type === 'delete') handleDeleteUser(confirmAction.userId);
-                          else if (confirmAction.type === 'block') handleUpdateUser(confirmAction.userId, { status: 'blocked' });
-                          else if (confirmAction.type === 'unblock') handleUpdateUser(confirmAction.userId, { status: 'active' });
-                          else if (confirmAction.type === 'reset') handleUpdateUser(confirmAction.userId, { dailyUsage: 0, totalUsage: 0 });
-                          else if (confirmAction.type === 'role') handleUpdateUser(confirmAction.userId, { role: confirmAction.data });
-                          else if (confirmAction.type === 'plan') handleUpdateUser(confirmAction.userId, { plan: confirmAction.data });
+                        onClick={async () => {
+                          if (confirmAction.type === 'delete') await handleDeleteUser(confirmAction.id);
+                          else if (confirmAction.type === 'block') await handleUpdateUser(confirmAction.id, { status: 'blocked' });
+                          else if (confirmAction.type === 'unblock') await handleUpdateUser(confirmAction.id, { status: 'active' });
+                          else if (confirmAction.type === 'reset') await handleUpdateUser(confirmAction.id, { dailyUsage: 0, totalUsage: 0 });
+                          else if (confirmAction.type === 'role') await handleUpdateUser(confirmAction.id, { role: confirmAction.data });
+                          else if (confirmAction.type === 'plan') await handleUpdateUser(confirmAction.id, { plan: confirmAction.data });
+                          else if (confirmAction.type === 'reset_plans') await handleResetPlans();
+                          else if (confirmAction.type === 'delete_broadcast') {
+                            setIsProcessingAction(true);
+                            try {
+                              await deleteDoc(doc(db, 'broadcasts', confirmAction.id));
+                              setConfirmAction(null);
+                            } catch (error) { alert("Action failed ❌"); } finally { setIsProcessingAction(false); }
+                          }
+                          else if (confirmAction.type === 'delete_code') {
+                            setIsProcessingAction(true);
+                            try {
+                              await deleteDoc(doc(db, 'redeem', confirmAction.id));
+                              setConfirmAction(null);
+                            } catch (error) { alert("Action failed ❌"); } finally { setIsProcessingAction(false); }
+                          }
+                          else if (confirmAction.type === 'toggle_maintenance') {
+                            setIsProcessingAction(true);
+                            try {
+                              await handleUpdateAppSettings({ maintenance: confirmAction.data });
+                              setConfirmAction(null);
+                            } catch (error) { alert("Action failed ❌"); } finally { setIsProcessingAction(false); }
+                          }
                         }}
                         className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
-                          confirmAction.type === 'delete' || confirmAction.type === 'block' ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-white text-black hover:bg-zinc-200'
+                          ['delete', 'block', 'delete_broadcast', 'delete_code', 'reset_plans'].includes(confirmAction.type) ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-white text-black hover:bg-zinc-200'
                         }`}
                       >
-                        Confirm
+{isProcessingAction && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {isProcessingAction ? 'Processing...' : 'Confirm'}
                       </button>
                     </div>
                   </motion.div>
@@ -1141,10 +1048,9 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                         onChange={(e) => setTempSettings(prev => ({ ...prev, defaultModel: e.target.value as any }))}
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm"
                       >
-                        <option value="gpt4o">GPT-4o</option>
-                        <option value="claude">Claude 3.5</option>
-                        <option value="deepseek">DeepSeek-R1</option>
-                        <option value="llama">Llama 3.2</option>
+                        {aiModels?.map(model => (
+                          <option key={model.id} value={model.id}>{model.name}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -1157,6 +1063,33 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                       value={tempSettings.globalSystemPrompt}
                       onChange={(e) => setTempSettings(prev => ({ ...prev, globalSystemPrompt: e.target.value }))}
                     />
+                  </div>
+
+                  <div className="pt-6 border-t border-zinc-800 space-y-4">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-widest">Model Access Control</h3>
+                    <p className="text-xs text-zinc-500">Toggle which models are available to users.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {aiModels?.map(model => (
+                        <div key={model.id} className="flex items-center justify-between bg-zinc-950 border border-zinc-800 p-4 rounded-2xl">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl">{model.icon}</span>
+                            <div>
+                              <p className="font-bold text-sm text-white">{model.name}</p>
+                              <p className="text-[10px] text-zinc-500">{model.id}</p>
+                            </div>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              className="sr-only peer"
+                              checked={model.enabled !== false} // Ensure enabled by default
+                              onChange={() => onToggleModel(model.id)}
+                            />
+                            <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="pt-6 border-t border-zinc-800">
@@ -1268,7 +1201,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
                         </div>
                         <button 
                           type="button"
-                          onClick={() => deleteDoc(doc(db, 'redeem', code.id))}
+                          onClick={() => setConfirmAction({ type: 'delete_code', id: code.id, title: code.code })}
                           className="p-2 text-zinc-500 hover:text-red-500 transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1329,7 +1262,7 @@ export function AdminPanel({ currentUser, moduleSettings, onClose }: AdminPanelP
             <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <StatCard title="Total Users" value={users.length} icon={<Users className="w-5 h-5" />} color="blue" />
-                  <StatCard title="Active Modules" value={modules.filter(m => m.isEnabled).length} icon={<Box className="w-5 h-5" />} color="emerald" />
+                  <StatCard title="Active Models" value={aiModels.filter(m => m.enabled !== false).length} icon={<Box className="w-5 h-5" />} color="emerald" />
                   <StatCard title="Total Requests" value="12,450" icon={<Zap className="w-5 h-5" />} color="amber" />
                 </div>
                 <div className="bg-zinc-900/30 border border-zinc-800 rounded-3xl p-8 text-center text-zinc-500">
@@ -1401,7 +1334,12 @@ console.log(calculateFibonacci(10));`}</code>
                   </div>
                   <button 
                     type="button"
-                    onClick={() => handleUpdateAppSettings({ maintenance: !appSettings?.maintenance })}
+                    onClick={() => setConfirmAction({ 
+                      type: 'toggle_maintenance', 
+                      id: 'global_settings', 
+                      title: 'Global Settings', 
+                      data: !appSettings?.maintenance 
+                    })}
                     className={`w-14 h-7 rounded-full transition-colors relative ${appSettings?.maintenance ? 'bg-amber-500' : 'bg-zinc-800'}`}
                   >
                     <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${appSettings?.maintenance ? 'right-1' : 'left-1'}`} />
@@ -1823,7 +1761,7 @@ console.log(calculateFibonacci(10));`}</code>
                         </div>
                         <button 
                           type="button"
-                          onClick={() => deleteDoc(doc(db, 'broadcasts', broadcast.id))}
+                          onClick={() => setConfirmAction({ type: 'delete_broadcast', id: broadcast.id, title: broadcast.title })}
                           className="p-2 text-zinc-500 hover:text-red-500 bg-zinc-950 rounded-lg border border-zinc-800 transition-colors shrink-0"
                           title="Delete Broadcast"
                         >
@@ -1848,7 +1786,7 @@ console.log(calculateFibonacci(10));`}</code>
                 </div>
                 <button 
                   type="button"
-                  onClick={handleResetPlans}
+                  onClick={() => setConfirmAction({ type: 'reset_plans', id: 'all_plans', title: 'All Plans' })}
                   className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-colors"
                 >
                   Reset to Default
@@ -1932,23 +1870,17 @@ console.log(calculateFibonacci(10));`}</code>
                       </div>
 
                       <div className="space-y-4">
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Feature Access</label>
-                        <div className="grid grid-cols-2 gap-4">
-                          {Object.entries(plan.features).map(([feature, enabled]) => (
-                            <button 
-                              type="button"
-                              key={feature}
-                              onClick={() => handleUpdatePlan(planId as Plan, { 
-                                features: { ...plan.features, [feature]: !enabled } 
-                              })}
-                              className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                                enabled ? 'bg-white/5 border-white/10 text-white' : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-                              }`}
-                            >
-                              <span className="text-xs font-bold capitalize">{feature}</span>
-                              {enabled ? <CheckCircle className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4" />}
-                            </button>
-                          ))}
+                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Performance Settings</label>
+                        <div className="grid grid-cols-1 gap-4">
+                          <div className="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
+                            <div>
+                              <p className="text-sm font-bold text-white">High Priority Access</p>
+                              <p className="text-[10px] text-zinc-500">Users on this plan get faster response times</p>
+                            </div>
+                            <div className={`w-10 h-6 rounded-full transition-colors relative ${plan.speed === 'fast' ? 'bg-blue-600' : 'bg-zinc-800'}`}>
+                               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${plan.speed === 'fast' ? 'right-1' : 'left-1'}`} />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

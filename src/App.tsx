@@ -19,9 +19,9 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { auth, db, signInWithPopup, googleProvider, signOut, handleFirestoreError } from './firebase';
-import { UserProfile, ChatThread, Message, MemoryItem, OperationType, PlanSettings, Plan, AppSettings, UserSettings, AIMode, AIModule, AIModel, RedeemCode, Attachment, ModuleConfig, FirestoreErrorInfo, PLAN_ORDER, ModuleSettings } from './types';
+import { UserProfile, ChatThread, Message, MemoryItem, OperationType, PlanSettings, Plan, AppSettings, UserSettings, AIMode, AIModel, RedeemCode, Attachment, FirestoreErrorInfo, PLAN_ORDER } from './types';
 import { encrypt, decrypt, getEncryptionKey } from './lib/crypto';
-import { checkUsageLimit, canAccessModule, PLAN_LIMITS } from './lib/subscription';
+import { checkUsageLimit, canAccessModel, PLAN_LIMITS } from './lib/subscription';
 import { Sidebar } from './components/Sidebar';
 import { NotificationBell } from './components/NotificationBell';
 import { BroadcastBanner } from './components/BroadcastBanner';
@@ -36,6 +36,7 @@ import { AuthPage } from './components/AuthPage';
 import { LandingPage } from './components/LandingPage';
 import { VerificationScreen } from './components/VerificationScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { applyTheme } from './lib/themes';
 import { AnimatePresence, motion } from 'motion/react';
 import { Zap, AlertTriangle, CheckCircle, X, Ban } from 'lucide-react';
 
@@ -43,6 +44,12 @@ const OWNER_EMAILS = ['officialdevloper19995@gmail.com', 'priyanshukumarrxl948@g
 
 const DEFAULT_SETTINGS: UserSettings = {
   theme: 'dark',
+  customColors: {
+    accent: '#3b82f6',
+    bg: '#09090b',
+    text: '#fafafa',
+    card: '#18181b'
+  },
   fontSize: 'medium',
   aiMode: 'smart',
   responseStyle: 'detailed',
@@ -72,8 +79,10 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [memories, setMemories] = useState<any[]>([]);
   const [currentMode, setCurrentMode] = useState<AIMode>('lite');
-  const [currentModule, setCurrentModule] = useState<AIModule>('chat');
-  const [selectedAIModel, setSelectedAIModel] = useState<AIModel>('auto');
+  const [selectedAIModel, setSelectedAIModel] = useState<AIModel>(() => {
+    const saved = localStorage.getItem('selectedAIModel');
+    return saved ? saved : 'openai/gpt-4.1';
+  });
   const [isTyping, setIsTyping] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<string>('');
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -81,18 +90,75 @@ export default function App() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [planSettings, setPlanSettings] = useState<Record<string, PlanSettings>>({});
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
-  const [moduleSettings, setModuleSettings] = useState<ModuleSettings>({
-    chat: true,
-    code: true,
-    image: true,
-    tools: true,
-    api: true,
-    search: true
-  });
   const [popup, setPopup] = useState<{ show: boolean; type: 'success' | 'error'; message: string; plan?: string } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [showComingSoon, setShowComingSoon] = useState(false);
+
+  // Apply Theme
+  useEffect(() => {
+    applyTheme(userSettings.theme, userSettings.customColors);
+  }, [userSettings.theme, userSettings.customColors]);
+  
+  const DEFAULT_MODELS = [
+    { id: "kyvex", name: "Kyvex", description: "Fast & Smart", icon: "⚡", type: "api", enabled: true },
+    { id: "claude-sonnet-4.5", name: "Claude-sonnet-4.5", description: "Advanced Intelligence", icon: "🧠", type: "api", enabled: true },
+    { id: "gpt-5", name: "GPT-5", description: "Multi AI", icon: "🤖", type: "api", enabled: true },
+    { id: "gemini-2.5-pro", name: "Gemini-2.5-pro", description: "Multi AI", icon: "✨", type: "api", enabled: true },
+    { id: "grok-4", name: "Grok 4", description: "Multi AI", icon: "⚡", type: "api", enabled: true },
+    { id: "gemini-imagen-4", name: "Gemini-imagen-4", description: "Multi AI", icon: "🎨", type: "api", enabled: true },
+    { id: "openai/gpt-4.1", name: "GPT-4.1", description: "GitHub AI", icon: "💬", type: "github", enabled: true },
+    { id: "deepseek-r1", name: "DeepSeek-R1", description: "Advanced reasoning AI", icon: "🧠", type: "github", enabled: true }
+  ];
+
+  const [aiModels, setAiModels] = useState<any[]>(DEFAULT_MODELS);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'systemSettings', 'global'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.models) {
+          setAiModels(data.models);
+        } else {
+          // Initialize if missing in Firestore
+          setDoc(doc(db, 'systemSettings', 'global'), { models: DEFAULT_MODELS }, { merge: true });
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const toggleModel = async (id: string) => {
+    const updated = aiModels.map(m => m.id === id ? { ...m, enabled: m.enabled === false ? true : false } : m);
+    setAiModels(updated);
+    try {
+      await setDoc(doc(db, 'systemSettings', 'global'), { models: updated }, { merge: true });
+    } catch (error) {
+      console.error("Error updating model status:", error);
+    }
+  };
+
+  useEffect(() => {
+    const activeModels = aiModels.filter(m => m.enabled !== false);
+    const isSelectedActive = activeModels.some(m => m.id === selectedAIModel);
+    
+    if (!isSelectedActive && activeModels.length > 0) {
+      setSelectedAIModel(activeModels[0].id);
+      localStorage.setItem('selectedAIModel', activeModels[0].id);
+      if (user) {
+        handleUpdateUser({ selectedModel: activeModels[0].id });
+      }
+    }
+  }, [aiModels, selectedAIModel, user]);
+
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const parallaxRef = useRef<HTMLDivElement>(null);
+
+  const showComingSoonPopup = () => {
+    setShowComingSoon(true);
+    setTimeout(() => {
+      setShowComingSoon(false);
+    }, 2000);
+  };
 
   useEffect(() => {
     let rafId: number;
@@ -172,7 +238,6 @@ export default function App() {
             }
             setUser(userData);
             setCurrentMode(userData.mode || 'lite');
-            setCurrentModule(userData.currentModule || 'chat');
             setSelectedAIModel(userData.selectedModel || 'auto');
           } else {
             const newUser: UserProfile = {
@@ -187,7 +252,6 @@ export default function App() {
               lastLogin: serverTimestamp(),
               theme: 'dark',
               mode: 'lite',
-              currentModule: 'chat',
               selectedModel: 'auto',
               credits: 0,
               dailyUsage: 0,
@@ -240,31 +304,14 @@ export default function App() {
         setUserSettings(merged);
         localStorage.setItem('settings', JSON.stringify(merged));
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/config`));
     return () => unsubscribe();
   }, [user?.uid]);
 
-  // Fetch Module Settings (Real-time)
+  // Save selectedAIModel to localStorage
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'moduleSettings', 'global'), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data() as ModuleSettings;
-        setModuleSettings(data);
-        console.log("Module settings loaded:", data);
-      } else {
-        // Initialize if not exists
-        setDoc(doc(db, 'moduleSettings', 'global'), {
-          chat: true,
-          code: true,
-          image: true,
-          tools: true,
-          api: true,
-          search: true
-        });
-      }
-    }, (error) => console.error("Error fetching module settings:", error));
-    return () => unsubscribe();
-  }, []);
+    localStorage.setItem('selectedAIModel', selectedAIModel);
+  }, [selectedAIModel]);
 
   // Fetch Threads
   useEffect(() => {
@@ -505,20 +552,6 @@ export default function App() {
         setActivePage('pricing');
         return;
       }
-      
-      // Feature Access Check
-      if (currentPlanSettings) {
-        const moduleKey = currentModule as keyof typeof currentPlanSettings.features;
-        if (currentPlanSettings.features[moduleKey] === false) {
-          alert(`Your current plan (${user.plan}) does not include access to the ${currentModule.toUpperCase()} module.`);
-          setActivePage('pricing');
-          return;
-        }
-      } else if (!canAccessModule(user, currentModule)) {
-        alert(`Your current plan (${user.plan}) does not include access to the ${currentModule.toUpperCase()} module.`);
-        setActivePage('pricing');
-        return;
-      }
     }
 
     let threadId = currentChatId;
@@ -579,27 +612,71 @@ export default function App() {
         parts: [{ text: m.message }]
       }));
       
-      const response = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abortControllerRef.current.signal,
-        body: JSON.stringify({ 
-          message: content, 
-          history, 
-          settings: {
-            aiMode: userSettings.aiMode,
-            responseStyle: userSettings.responseStyle
-          }
-        })
-      });
+      const systemPrompt = `You are Blaze AI. 
+- No ads
+- Clean answer only
+- Direct output`;
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch AI response');
+      let fullContent = '';
+      try {
+        const selectedModelConfig = aiModels.find((m: any) => m.id === selectedAIModel);
+        let text = "";
+
+        if (selectedModelConfig?.type === "github") {
+          const response = await fetch('/api/github-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              message: content,
+              history,
+              model: selectedAIModel,
+              systemPrompt
+            })
+          });
+          if (!response.ok) throw new Error('API Error');
+          const data = await response.json();
+          text = data.text || "";
+        } else {
+          const prompt = `You are Blaze AI. 
+- No ads
+- Clean answer only
+- Direct output
+
+User: ${content}`;
+          const res = await fetch(
+            `https://shaikhs-ai.rajageminiwala.workers.dev/chat/get?prompt=${encodeURIComponent(prompt)}&model=${selectedAIModel}`
+          );
+
+          if (!res.ok) {
+            throw new Error('API Error');
+          }
+
+          const data = await res.json();
+          text = data.response || "";
+        }
+
+        // Clean response
+        text = text.replace(/\[THREAD_ID:.*?\]/g, "");
+        text = text.replace(/<think>.*?<\/think>/gs, "");
+        text = text.replace(/📢.*/g, "");
+
+        fullContent = text.trim();
+        
+        // Simulate typing for better UX
+        const words = fullContent.split(' ');
+        let currentText = '';
+        for (let i = 0; i < words.length; i++) {
+          if (abortControllerRef.current?.signal.aborted) break;
+          currentText += words[i] + (i < words.length - 1 ? ' ' : '');
+          setStreamingMessage(currentText);
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+      } catch (err: any) {
+        fullContent = `Error: ${err.message}`;
+        setStreamingMessage(fullContent);
       }
 
-      const data = await response.json();
-      const fullContent = data.text || "No response received";
+      if (abortControllerRef.current?.signal.aborted) return;
       
       if (shouldSave) {
         await addDoc(collection(db, 'chats'), {
@@ -619,7 +696,7 @@ export default function App() {
           sender: 'ai',
           message: fullContent || "No response received",
           timestamp: new Date(),
-          modelUsed: selectedAIModel as any
+          modelUsed: selectedAIModel
         };
         setMessages(prev => [...prev, tempAiMsg]);
       }
@@ -647,7 +724,7 @@ export default function App() {
             sender: 'ai',
             message: stoppedMsg,
             timestamp: new Date(),
-            modelUsed: selectedAIModel as any
+            modelUsed: selectedAIModel
           };
           setMessages(prev => [...prev, tempAiMsg]);
         }
@@ -676,35 +753,12 @@ export default function App() {
         localStorage.setItem('settings', JSON.stringify(settings));
       } else {
         // Initialize settings if they don't exist
-        setDoc(doc(db, 'users', user.uid, 'settings', 'config'), DEFAULT_SETTINGS);
+        setDoc(doc(db, 'users', user.uid, 'settings', 'config'), DEFAULT_SETTINGS)
+          .catch(err => console.error("Error initializing user settings:", err));
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/config`));
     return () => unsub();
   }, [user]);
-
-  useEffect(() => {
-    // Apply Theme
-    const applyTheme = () => {
-      if (userSettings.theme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else if (userSettings.theme === 'light') {
-        document.documentElement.classList.remove('dark');
-      } else {
-        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.classList.toggle('dark', isDark);
-      }
-    };
-
-    applyTheme();
-
-    // Listen for system theme changes
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = () => {
-      if (userSettings.theme === 'system') applyTheme();
-    };
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, [userSettings.theme]);
 
   useEffect(() => {
     // Apply Font Size
@@ -806,22 +860,6 @@ export default function App() {
   useEffect(() => {
     if (user?.role === 'owner') {
       const seed = async () => {
-        const modulesSnap = await getDocs(collection(db, 'moduleConfigs'));
-        if (modulesSnap.empty) {
-          const batch = writeBatch(db);
-          const defaultModules: Partial<ModuleConfig>[] = [
-            { name: 'AI Chat', type: 'chat', isEnabled: true, status: 'active' },
-            { name: 'Code Master', type: 'code', isEnabled: true, status: 'active' },
-            { name: 'Vision AI', type: 'image', isEnabled: true, status: 'active' },
-            { name: 'Research', type: 'research', isEnabled: true, status: 'active' }
-          ];
-          defaultModules.forEach(m => {
-            const ref = doc(collection(db, 'moduleConfigs'));
-            batch.set(ref, m);
-          });
-          await batch.commit();
-        }
-
         const plansSnap = await getDocs(collection(db, 'planSettings'));
         if (plansSnap.empty) {
           const batch = writeBatch(db);
@@ -930,9 +968,9 @@ export default function App() {
           <div className="parallax-stars" />
         </div>
         <Sidebar 
-          isOpen={sidebarOpen} setIsOpen={setSidebarOpen} chats={chats} currentChatId={currentChatId} activePage={activePage} currentModule={currentModule}
-          planSettings={planSettings} moduleSettings={moduleSettings} userSettings={userSettings}
-          onNavigate={handleNavigate} onModuleChange={(module) => { setCurrentModule(module); handleUpdateUser({ currentModule: module }); }}
+          isOpen={sidebarOpen} setIsOpen={setSidebarOpen} chats={chats} currentChatId={currentChatId} activePage={activePage}
+          planSettings={planSettings} userSettings={userSettings}
+          onNavigate={handleNavigate}
           onNewChat={handleNewChat} onSelectChat={setCurrentChatId} onLogout={handleLogout} user={user}
           privacyMode={userSettings.privacyMode}
           onPinChat={handlePinChat}
@@ -941,6 +979,7 @@ export default function App() {
           onDeleteChat={handleDeleteChat}
           showArchived={showArchived}
           onToggleArchived={() => setShowArchived(!showArchived)}
+          onComingSoon={showComingSoonPopup}
         />
         <main className="flex-1 flex flex-col min-w-0 relative">
             {/* Global Progress Bar */}
@@ -990,11 +1029,12 @@ export default function App() {
                 }>
                   {activePage === 'chat' && (
                   <ChatInterface 
-                    messages={messages} onSendMessage={handleSendMessage} onStopGenerating={handleStopGenerating} currentMode={currentMode} currentModule={currentModule} selectedAIModel={selectedAIModel}
+                    messages={messages} onSendMessage={handleSendMessage} onStopGenerating={handleStopGenerating} currentMode={currentMode} selectedAIModel={selectedAIModel}
                     onAIModelChange={(model) => { setSelectedAIModel(model); handleUpdateUser({ selectedModel: model }); }}
                     setMode={(mode) => { setCurrentMode(mode); handleUpdateUser({ mode }); }}
                     onSaveToMemory={(content) => handleSaveToMemory(content, 'fact')} isTyping={isTyping} streamingMessage={streamingMessage} userPlan={user.role === 'owner' ? 'OWNER' : user.plan}
-                    isLoading={isInitialLoading} moduleSettings={moduleSettings} userRole={user.role} privacyMode={userSettings.privacyMode} currentUser={user}
+                    isLoading={isInitialLoading} userRole={user.role} privacyMode={userSettings.privacyMode} currentUser={user}
+                    aiModels={aiModels}
                   />
                 )}
                 {activePage === 'settings' && (
@@ -1026,8 +1066,8 @@ export default function App() {
                     <SupportPanel user={user} onNavigate={handleNavigate} />
                   </div>
                 )}
-                {activePage === 'admin' && (user?.role === 'owner' || user?.role === 'admin') && (
-                  <AdminPanel currentUser={user} onClose={() => handleNavigate('chat')} moduleSettings={moduleSettings} />
+                {activePage === 'admin' && user?.role === 'owner' && (
+                  <AdminPanel currentUser={user} onClose={() => handleNavigate('chat')} aiModels={aiModels} onToggleModel={toggleModel} />
                 )}
                 {activePage === 'pricing' && (
                   <PricingPanel 
@@ -1125,6 +1165,25 @@ export default function App() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showComingSoon && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#111] border border-white/10 text-white px-5 py-3 rounded-xl shadow-2xl z-[10000] flex items-center gap-3 backdrop-blur-md"
+          >
+            <div className="bg-amber-500/20 text-amber-500 p-1.5 rounded-lg">
+              <Ban className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-sm font-bold">Feature Coming Soon</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">Premium feature locked</p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </ErrorBoundary>

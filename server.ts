@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-
 import { handleChat } from "./server/chat_logic.ts";
 
 dotenv.config();
@@ -18,8 +17,10 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", environment: process.env.VERCEL ? "vercel" : "local" });
 });
 
-// API Route for AI
+// API Routes for AI
 app.post("/api/ai", handleChat);
+app.post("/api/chat", handleChat);
+app.post("/api/github-chat", handleChat);
 
 async function startServer() {
   const PORT = 3000;

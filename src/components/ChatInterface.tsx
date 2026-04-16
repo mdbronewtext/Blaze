@@ -28,10 +28,11 @@ import {
   ChevronDown,
   Ban,
   Lock,
-  Mic
+  Mic,
+  Download
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { Message, AIMode, Plan, Attachment, AIModule, AIModel, ModuleSettings, UserProfile } from '../types';
+import { Message, AIMode, Plan, Attachment, AIModel, UserProfile } from '../types';
 import { CodeBlock } from './CodeBlock';
 import { ChatSkeleton } from './Skeleton';
 import { NotificationBell } from './NotificationBell';
@@ -41,11 +42,75 @@ import * as pdfjsLib from 'pdfjs-dist';
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
+const SafeImage = ({ src, alt }: { src: string, alt: string }) => {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    try {
+      setDownloading(true);
+      // Try to fetch as blob for clean download filename
+      const response = await fetch(src);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `blaze-ai-image-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download failed:', error);
+      // Fallback for cross-origin issues
+      const link = document.createElement('a');
+      link.href = src;
+      link.target = '_blank';
+      link.download = `blaze-ai-image-${Date.now()}.png`;
+      link.click();
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-3 w-full group/img my-4">
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl bg-black/20 group-hover:border-white/20 transition-all p-1">
+        <img 
+          src={src} 
+          alt={alt} 
+          className="max-w-full h-auto rounded-xl object-contain select-none pointer-events-none cursor-default" 
+          referrerPolicy="no-referrer"
+          onContextMenu={(e) => e.preventDefault()}
+          onDragStart={(e) => e.preventDefault()}
+        />
+        {/* Overlay to block even more interactions */}
+        <div 
+          className="absolute inset-0 z-10" 
+          onContextMenu={(e) => e.preventDefault()}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity pointer-events-none" />
+      </div>
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={downloading}
+        className="flex items-center gap-2 px-6 py-2.5 bg-white text-black rounded-xl font-bold text-sm hover:bg-zinc-200 transition-all active:scale-95 shadow-xl disabled:opacity-50 shrink-0"
+      >
+        {downloading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Download className="w-4 h-4" />
+        )}
+        Download Image
+      </button>
+    </div>
+  );
+};
+
 interface ChatInterfaceProps {
   messages: Message[];
   onSendMessage: (content: string, attachment?: Attachment) => void;
   currentMode: AIMode;
-  currentModule: AIModule;
   selectedAIModel: AIModel;
   onAIModelChange: (model: AIModel) => void;
   setMode: (mode: AIMode) => void;
@@ -56,9 +121,9 @@ interface ChatInterfaceProps {
   userPlan: Plan;
   privacyMode?: boolean;
   isLoading?: boolean;
-  moduleSettings: ModuleSettings;
   userRole?: string;
   currentUser: UserProfile;
+  aiModels: any[];
 }
 
 const MessageItem = React.memo(({ 
@@ -68,7 +133,8 @@ const MessageItem = React.memo(({
   handleCopy, 
   onSaveToMemory,
   formatTime,
-  formatSize
+  formatSize,
+  getModelInfo
 }: { 
   msg: Message; 
   idx: number; 
@@ -77,6 +143,7 @@ const MessageItem = React.memo(({
   onSaveToMemory?: (content: string) => void;
   formatTime: (ts: any) => string;
   formatSize: (bytes?: number) => string;
+  getModelInfo: (id: string) => any;
 }) => (
   <motion.div
     initial={{ opacity: 0, y: 10 }}
@@ -94,18 +161,41 @@ const MessageItem = React.memo(({
     <div className={`space-y-1.5 min-w-0 w-full flex flex-col ${msg.sender === 'ai' ? 'items-start' : 'items-end'}`}>
       {msg.sender === 'ai' && (
         <div className="flex items-center gap-1.5 text-[13px] font-semibold text-zinc-300 ml-1">
-          <span>{msg.modelUsed === 'claude' ? 'Claude 🔥' : (msg.modelUsed === 'deepseek' ? 'DeepSeek-R1 ✨' : (msg.modelUsed === 'grok' ? 'Grok-3 ⚡' : (msg.modelUsed === 'llama' ? 'Llama 3.2 👁️' : 'GPT-4o 🧠')))}</span>
+          <span>{getModelInfo(msg.modelUsed || '').icon}</span>
+          <span>{getModelInfo(msg.modelUsed || '').name}</span>
         </div>
       )}
-      <div className={`p-4 text-[15px] leading-relaxed break-words overflow-hidden glass-card depth-shadow ${
+      <div className={`p-4 text-[15px] leading-relaxed break-words overflow-hidden glass-card depth-shadow relative ${
         msg.sender === 'ai' 
           ? 'border border-white/5 text-zinc-200 rounded-2xl rounded-tl-sm w-full' 
           : 'bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium rounded-2xl rounded-tr-sm border border-blue-400/20'
       }`}>
+        {msg.sender === 'ai' && (
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+            <button 
+              type="button"
+              onClick={() => handleCopy(msg.id, msg.message)}
+              className="p-1.5 bg-zinc-900/50 backdrop-blur-sm border border-white/10 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-all shadow-lg flex items-center gap-1.5 px-2.5"
+              title="Copy message"
+            >
+              {copiedId === msg.id ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-green-400" />
+                  <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-bold text-zinc-400 group-hover:text-white uppercase tracking-wider">Copy</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
         {msg.attachment && (
           <div className="mb-3">
             {msg.attachment.type === 'image' ? (
-              <img src={msg.attachment.url} alt="Attachment" className="max-w-full rounded-lg max-h-64 object-contain bg-black/20" />
+              <SafeImage src={msg.attachment.url} alt={msg.attachment.name || "Attachment"} />
             ) : (
               <div className="flex items-center gap-3 bg-black/20 p-3 rounded-lg border border-white/10">
                 <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
@@ -122,6 +212,9 @@ const MessageItem = React.memo(({
         <div className="markdown-body overflow-x-auto">
           <ReactMarkdown
             components={{
+              img({ src, alt }: any) {
+                return <SafeImage src={src} alt={alt} />;
+              },
               code({ node, inline, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || '');
                 return !inline && match ? (
@@ -151,14 +244,6 @@ const MessageItem = React.memo(({
           <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <button 
               type="button"
-              onClick={() => handleCopy(msg.id, msg.message)}
-              className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-md transition-colors"
-              title="Copy message"
-            >
-              {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
-            <button 
-              type="button"
               onClick={() => onSaveToMemory?.(msg.message)}
               className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 rounded-md transition-colors"
               title="Save to Memory"
@@ -174,10 +259,16 @@ const MessageItem = React.memo(({
 
 const StreamingMessageItem = React.memo(({ 
   selectedAIModel, 
-  streamingMessage 
+  streamingMessage,
+  getModelInfo,
+  handleCopy,
+  copiedId
 }: { 
   selectedAIModel: AIModel; 
   streamingMessage: string; 
+  getModelInfo: (id: string) => any;
+  handleCopy: (id: string, text: string) => void;
+  copiedId: string | null;
 }) => (
   <motion.div 
     initial={{ opacity: 0, y: 10 }}
@@ -187,15 +278,41 @@ const StreamingMessageItem = React.memo(({
     <div className="w-8 h-8 rounded-full bg-zinc-800 text-zinc-300 shrink-0 flex items-center justify-center border border-zinc-700 shadow-sm">
       <Bot className="w-5 h-5" />
     </div>
-    <div className="flex flex-col items-start gap-1.5">
-      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-zinc-300 ml-1">
-        <span>{selectedAIModel === 'claude' ? 'Claude 🔥' : (selectedAIModel === 'deepseek' ? 'DeepSeek-R1 ✨' : (selectedAIModel === 'grok' ? 'Grok-3 ⚡' : (selectedAIModel === 'llama' ? 'Llama 3.2 👁️' : (selectedAIModel === 'gpt4o' ? 'GPT-4o 🧠' : 'AI 🤖'))))}</span>
-      </div>
-      <div className="flex flex-col gap-3 p-4 glass-card border border-white/5 rounded-2xl rounded-tl-sm depth-shadow max-w-full">
+      <div className="flex flex-col items-start gap-1.5 min-w-0 w-full relative group">
+        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-zinc-300 ml-1">
+          <span>{getModelInfo(selectedAIModel).icon}</span>
+          <span>{getModelInfo(selectedAIModel).name}</span>
+        </div>
+        <div className="flex flex-col gap-3 p-4 glass-card border border-white/5 rounded-2xl rounded-tl-sm depth-shadow max-w-full w-full relative">
+          {streamingMessage && (
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+              <button 
+                type="button"
+                onClick={() => handleCopy('streaming', streamingMessage)}
+                className="p-1.5 bg-zinc-900/50 backdrop-blur-sm border border-white/10 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-all shadow-lg flex items-center gap-1.5 px-2.5"
+                title="Copy message"
+              >
+                {copiedId === 'streaming' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-green-400" />
+                    <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold text-zinc-400 group-hover:text-white uppercase tracking-wider">Copy</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         {streamingMessage ? (
           <div className="prose prose-invert prose-sm max-w-none">
             <ReactMarkdown
               components={{
+                img({ src, alt }: any) {
+                  return <SafeImage src={src} alt={alt} />;
+                },
                 code({ node, inline, className, children, ...props }: any) {
                   const match = /language-(\w+)/.exec(className || '');
                   return !inline && match ? (
@@ -223,7 +340,7 @@ const StreamingMessageItem = React.memo(({
         ) : (
           <div className="flex items-center gap-3">
             <span className="text-[15px] text-zinc-400 font-medium">
-              {selectedAIModel === 'claude' ? 'Claude' : (selectedAIModel === 'deepseek' ? 'DeepSeek-R1' : (selectedAIModel === 'grok' ? 'Grok-3' : (selectedAIModel === 'llama' ? 'Llama 3.2' : (selectedAIModel === 'gpt4o' ? 'GPT-4o' : 'AI'))))} is thinking
+              {getModelInfo(selectedAIModel).name} is thinking
             </span>
             <div className="flex items-center gap-1">
               <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.2 }} className="w-1.5 h-1.5 bg-zinc-400 rounded-full" />
@@ -241,7 +358,6 @@ export const ChatInterface = React.memo(({
   messages, 
   onSendMessage, 
   currentMode, 
-  currentModule,
   selectedAIModel,
   onAIModelChange,
   setMode, 
@@ -252,17 +368,11 @@ export const ChatInterface = React.memo(({
   userPlan,
   privacyMode = false,
   isLoading = false,
-  moduleSettings,
   userRole,
-  currentUser
+  currentUser,
+  aiModels
 }: ChatInterfaceProps) => {
   const isOwner = userRole === 'owner';
-  const isModuleEnabled = isOwner || (
-    currentModule === 'chat' ? moduleSettings.chat :
-    currentModule === 'code' ? moduleSettings.code :
-    currentModule === 'image' ? moduleSettings.image :
-    currentModule === 'research' ? moduleSettings.search : true
-  );
   const [input, setInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
@@ -270,7 +380,7 @@ export const ChatInterface = React.memo(({
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isModuleMenuOpen, setIsModuleMenuOpen] = useState(false);
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   
   // Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -282,25 +392,7 @@ export const ChatInterface = React.memo(({
   const photoInputRef = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
 
-  const getModuleInfo = () => {
-    switch(currentModule) {
-      case 'code': return { label: 'Code Master', icon: <Code2 className="w-4 h-4" />, placeholder: 'Ask for code, debugging, or architecture...' };
-      case 'image': return { label: 'Vision AI', icon: <ImageIcon className="w-4 h-4" />, placeholder: 'Upload an image or ask for visual analysis...' };
-      case 'research': return { label: 'Research', icon: <Search className="w-4 h-4" />, placeholder: 'Deep dive into documents or complex topics...' };
-      default: return { label: 'AI Chat', icon: <MessageSquare className="w-4 h-4" />, placeholder: 'Message Claude, GPT-4o or GPT-5...' };
-    }
-  };
-
-  const moduleInfo = getModuleInfo();
-
-  const selectedModelInfo = [
-    { id: 'claude', label: 'Claude', icon: <Flame className="w-3 h-3 text-orange-500" /> },
-    { id: 'gpt4o', label: 'GPT-4o', icon: <Brain className="w-3 h-3 text-blue-400" /> },
-    { id: 'deepseek', label: 'DeepSeek-R1', icon: <Sparkles className="w-3 h-3 text-emerald-500" /> },
-    { id: 'grok', label: 'Grok-3', icon: <Zap className="w-3 h-3 text-white" /> },
-    { id: 'llama', label: 'Llama 3.2', icon: <ImageIcon className="w-3 h-3 text-blue-500" /> },
-    { id: 'auto', label: 'Auto', icon: <Bot className="w-3 h-3 text-zinc-400" /> }
-  ].find(m => m.id === selectedAIModel) || { id: 'auto', label: 'Auto', icon: <Bot className="w-3 h-3 text-zinc-400" /> };
+  const selectedModelData = aiModels?.find(m => m.id === selectedAIModel) || aiModels?.[0] || { name: 'Unknown', icon: '💬' };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -699,75 +791,68 @@ export const ChatInterface = React.memo(({
       {/* Header / Mode Selector */}
       <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-xl z-10">
         <div className="flex items-center gap-3 relative">
-          <button 
-            type="button"
-            onClick={() => setIsModuleMenuOpen(!isModuleMenuOpen)}
-            className="flex items-center gap-2.5 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-all group shadow-lg"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-zinc-400 group-hover:text-white transition-colors">{moduleInfo.icon}</span>
-              <span className="text-xs font-bold text-white tracking-tight">{moduleInfo.label}</span>
-            </div>
-            
-            <div className="w-px h-4 bg-zinc-800 mx-1" />
-            
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-800/50 rounded-lg border border-zinc-700/30">
-              {selectedModelInfo.icon}
-              <span className="text-[10px] font-black text-zinc-200 uppercase tracking-wider">{selectedModelInfo.label}</span>
-            </div>
+          {/* Model Selector */}
+          <div className="relative">
+            <button 
+              type="button"
+              onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+              className="flex items-center gap-2.5 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-all group shadow-lg"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-400 group-hover:text-white transition-colors">
+                  {aiModels.find(m => m.id === selectedAIModel)?.icon || '💬'}
+                </span>
+                <span className="text-xs font-bold text-white tracking-tight">
+                  {aiModels.find(m => m.id === selectedAIModel)?.name || 'Select Model'}
+                </span>
+              </div>
+              <ChevronDown className={`w-3 h-3 text-zinc-500 transition-transform duration-300 ${isModelMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-            <ChevronDown className={`w-3 h-3 text-zinc-500 transition-transform duration-300 ${isModuleMenuOpen ? 'rotate-180' : ''}`} />
-          </button>
+            <AnimatePresence>
+              {isModelMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute top-full left-0 mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-2xl"
+                >
+                  <div className="px-3 py-2 mb-1">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Select Model</p>
+                  </div>
+                  <div className="space-y-1">
+                    {aiModels.filter(m => m.enabled !== false).map((model) => (
+                      <button
+                        type="button"
+                        key={model.id}
+                        onClick={() => {
+                          onAIModelChange(model.id as AIModel);
+                          setIsModelMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-200 ${
+                          selectedAIModel === model.id 
+                            ? 'bg-zinc-800/80 border border-zinc-700 shadow-inner' 
+                            : 'hover:bg-zinc-800/40 border border-transparent'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl bg-zinc-900 flex items-center justify-center border border-zinc-800 shadow-sm text-lg`}>
+                          {model.icon}
+                        </div>
+                        <div className="text-left">
+                          <p className={`text-[11px] font-bold ${selectedAIModel === model.id ? 'text-white' : 'text-zinc-300'}`}>{model.name}</p>
+                          <p className="text-[9px] text-zinc-500 font-medium truncate max-w-[120px]">{model.description}</p>
+                        </div>
+                        {selectedAIModel === model.id && (
+                          <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-          <AnimatePresence>
-            {isModuleMenuOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute top-full left-0 mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-2xl"
-              >
-                <div className="px-3 py-2 mb-1">
-                  <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Select Engine</p>
-                </div>
-                <div className="space-y-1">
-                  {[
-                    { id: 'claude', label: 'Claude 3.5 Sonnet', icon: <Flame className="w-4 h-4 text-orange-500" />, desc: 'Expert Programming', color: 'orange' },
-                    { id: 'gpt4o', label: 'GPT-4o Intelligence', icon: <Brain className="w-4 h-4 text-blue-400" />, desc: 'Fast & Reliable', color: 'blue' },
-                    { id: 'deepseek', label: 'DeepSeek-R1 Reasoning', icon: <Sparkles className="w-4 h-4 text-emerald-500" />, desc: 'Deep Thinking', color: 'emerald' },
-                    { id: 'grok', label: 'Grok-3 Intelligence', icon: <Zap className="w-4 h-4 text-white" />, desc: 'Witty & Sharp', color: 'zinc' },
-                    { id: 'llama', label: 'Llama 3.2 Vision', icon: <ImageIcon className="w-4 h-4 text-blue-500" />, desc: 'Visual Intelligence', color: 'blue' },
-                    { id: 'auto', label: 'Auto Intelligence', icon: <Bot className="w-4 h-4 text-zinc-400" />, desc: 'Smart Switching', color: 'zinc' }
-                  ].map((m) => (
-                    <button
-                      type="button"
-                      key={m.id}
-                      onClick={() => {
-                        onAIModelChange(m.id as AIModel);
-                        setIsModuleMenuOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-200 ${
-                        selectedAIModel === m.id 
-                          ? 'bg-zinc-800/80 border border-zinc-700 shadow-inner' 
-                          : 'hover:bg-zinc-800/40 border border-transparent'
-                      }`}
-                    >
-                      <div className={`w-9 h-9 rounded-xl bg-zinc-900 flex items-center justify-center border border-zinc-800 shadow-sm`}>
-                        {m.icon}
-                      </div>
-                      <div className="text-left">
-                        <p className={`text-[11px] font-bold ${selectedAIModel === m.id ? 'text-white' : 'text-zinc-300'}`}>{m.label}</p>
-                        <p className="text-[9px] text-zinc-500 font-medium">{m.desc}</p>
-                      </div>
-                      {selectedAIModel === m.id && (
-                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
           <NotificationBell user={currentUser} />
         </div>
         <div className="flex bg-zinc-900/80 p-1 rounded-xl border border-zinc-800/50 shadow-sm">
@@ -811,28 +896,6 @@ export const ChatInterface = React.memo(({
             />
           )}
         </AnimatePresence>
-        {!isModuleEnabled && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-md p-6">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-10 text-center space-y-6 shadow-2xl"
-            >
-              <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto border border-red-500/20">
-                <Ban className="w-10 h-10 text-red-500" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-2xl font-black text-white tracking-tight">Module Disabled 🚫</h3>
-                <p className="text-zinc-400 font-medium leading-relaxed">
-                  The <span className="text-white font-bold">{moduleInfo.label}</span> feature has been temporarily disabled by the administrator.
-                </p>
-              </div>
-              <div className="pt-4">
-                <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em]">Please check back later</p>
-              </div>
-            </motion.div>
-          </div>
-        )}
         {isLoading ? (
           <ChatSkeleton />
         ) : messages.length === 0 ? (
@@ -865,12 +928,16 @@ export const ChatInterface = React.memo(({
             onSaveToMemory={onSaveToMemory}
             formatTime={formatTime}
             formatSize={formatSize}
+            getModelInfo={(id: string) => aiModels.find(m => m.id === id) || aiModels[0]}
           />
         ))}
         {isTyping && (
           <StreamingMessageItem 
             selectedAIModel={selectedAIModel}
             streamingMessage={streamingMessage}
+            getModelInfo={(id: string) => aiModels.find(m => m.id === id) || aiModels[0]}
+            handleCopy={handleCopy}
+            copiedId={copiedId}
           />
         )}
           <div ref={messagesEndRef} />
@@ -930,7 +997,7 @@ export const ChatInterface = React.memo(({
                     <button 
                       type="button"
                       onClick={() => handleSubmit(undefined, "Summarize this file and extract key points.")}
-                      className="px-3 py-1.5 bg-blue-600/10 border border-blue-500/30 rounded-full text-xs font-bold text-blue-400 hover:bg-blue-600/20 transition-all flex items-center gap-2"
+                      className="px-3 py-1.5 bg-accent/10 border border-accent/30 rounded-full text-xs font-bold text-accent hover:bg-accent/20 transition-all flex items-center gap-2"
                     >
                       <Sparkles className="w-3 h-3" /> Summarize
                     </button>
@@ -1007,10 +1074,10 @@ export const ChatInterface = React.memo(({
                 value={input}
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
-                placeholder={isRecording ? "Listening..." : (isModuleEnabled ? moduleInfo.placeholder : "Feature disabled by admin...")}
+                placeholder={isRecording ? "Listening..." : `Message ${selectedModelData.name}...`}
                 rows={1}
-                disabled={!isModuleEnabled || isTyping}
-                className={`w-full glass-panel border border-white/10 text-white rounded-3xl pl-6 pr-24 py-4 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-500 resize-none overflow-hidden min-h-[56px] max-h-[200px] depth-shadow ${(!isModuleEnabled || isTyping) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={isTyping}
+                className={`w-full glass-panel border border-white/10 text-white rounded-3xl pl-6 pr-24 py-4 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-500 resize-none overflow-hidden min-h-[56px] max-h-[200px] depth-shadow ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
                 style={{ height: 'auto' }}
               />
               <AnimatePresence mode="wait">
@@ -1035,7 +1102,7 @@ export const ChatInterface = React.memo(({
                       <motion.div 
                         initial={{ opacity: 0, x: 10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-full text-[10px] font-bold text-blue-400 uppercase tracking-wider"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border border-accent/20 rounded-full text-[10px] font-bold text-accent uppercase tracking-wider"
                       >
                         <Lock className="w-3 h-3" />
                         Private
@@ -1048,12 +1115,11 @@ export const ChatInterface = React.memo(({
                       onClick={(e) => toggleRecording(e)}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      disabled={!isModuleEnabled}
                       className={`p-2.5 rounded-full transition-all flex items-center justify-center relative z-20 ${
                         isRecording 
                           ? 'bg-red-500/20 text-red-500' 
                           : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
-                      } ${!isModuleEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      } ${false ? 'opacity-50 cursor-not-allowed' : ''}`}
                       title={isRecording ? "Stop recording" : "Voice input"}
                     >
                       {isRecording && (
@@ -1075,10 +1141,10 @@ export const ChatInterface = React.memo(({
                       whileTap={{ scale: 0.95 }}
                       type="button"
                       onClick={(e) => handleSubmit(e)}
-                      disabled={!isModuleEnabled || (!input.trim() && !attachment) || isProcessing}
+                      disabled={(!input.trim() && !attachment) || isProcessing}
                       className={`p-2.5 rounded-full transition-all ${
-                        isModuleEnabled && (input.trim() || attachment) && !isProcessing
-                          ? 'bg-white text-black hover:bg-zinc-200 shadow-md' 
+                        (input.trim() || attachment) && !isProcessing
+                          ? 'bg-accent text-white hover:opacity-90 shadow-lg' 
                           : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                       }`}
                     >

@@ -18,7 +18,6 @@ export const PLAN_PRICING = {
 
 export const PLAN_FEATURES = {
   FREE: {
-    modules: ['chat'],
     speed: 'Slow',
     memory: 'Limited',
     ads: true,
@@ -26,7 +25,6 @@ export const PLAN_FEATURES = {
     imageGen: false
   },
   PRO: {
-    modules: ['chat', 'code'],
     speed: 'Medium',
     memory: 'Standard',
     ads: false,
@@ -34,7 +32,6 @@ export const PLAN_FEATURES = {
     imageGen: true // Basic
   },
   PLUS: {
-    modules: ['chat', 'code', 'image', 'research'],
     speed: 'Priority',
     memory: 'Extended',
     ads: false,
@@ -42,7 +39,6 @@ export const PLAN_FEATURES = {
     imageGen: true
   },
   ELITE: {
-    modules: ['chat', 'code', 'image', 'research', 'tools'],
     speed: 'Fastest',
     memory: 'Full',
     ads: false,
@@ -50,7 +46,6 @@ export const PLAN_FEATURES = {
     imageGen: true
   },
   OWNER: {
-    modules: ['chat', 'code', 'image', 'research', 'tools'],
     speed: 'Fastest',
     memory: 'Full',
     ads: false,
@@ -67,11 +62,10 @@ export function checkUsageLimit(user: UserProfile): boolean {
   return usage < limit;
 }
 
-export function canAccessModule(user: UserProfile, module: string): boolean {
-  if (!user) return false;
-  if (user.role === 'owner' || user.plan === 'OWNER') return true;
-  const features = PLAN_FEATURES[user.plan] || PLAN_FEATURES.FREE;
-  return features.modules.includes(module);
+export function canAccessModel(user: UserProfile, modelId: string): boolean {
+  // Global access check for models if needed, currently all active models are accessible
+  // but can be restricted by plan if desired.
+  return true;
 }
 
 export function getUpgradePath(currentPlan: Plan): Plan[] {

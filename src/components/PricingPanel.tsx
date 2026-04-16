@@ -31,12 +31,6 @@ export function PricingPanel({ user, planSettings, onClose, onUpgrade }: Pricing
     if (newIndex < currentIndex) {
       setConfirmPlan(planId);
     } else {
-      // Normal users cannot self-upgrade. Only admin/owner can.
-      if (user?.role !== 'admin' && user?.role !== 'owner') {
-        alert("Subscription system is coming soon! 🚀\nPlease contact an administrator to request a plan upgrade.");
-        return;
-      }
-      
       setIsProcessing(true);
       await onUpgrade(planId);
       setIsProcessing(false);
@@ -106,7 +100,6 @@ export function PricingPanel({ user, planSettings, onClose, onUpgrade }: Pricing
             const basePrice = getPrice(p.id);
             const price = isYearly ? (basePrice * 12 * 0.8).toFixed(2) : basePrice.toFixed(2);
             const limit = settings.dailyLimit;
-            const features = settings.features;
             const isDowngrade = PLAN_ORDER[p.id] < PLAN_ORDER[user?.plan || 'FREE'];
 
             return (
@@ -138,20 +131,12 @@ export function PricingPanel({ user, planSettings, onClose, onUpgrade }: Pricing
                       <span>{limit >= 1000 ? 'Unlimited' : limit} Requests / day</span>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-zinc-300">
-                      {features.chat ? <Check className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-500 shrink-0" />}
-                      <span className={features.chat ? '' : 'text-zinc-600'}>AI Chat Assistant</span>
+                      <Check className="w-4 h-4 text-green-500 shrink-0" />
+                      <span>Access to All Models</span>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-zinc-300">
-                      {features.code ? <Check className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-500 shrink-0" />}
-                      <span className={features.code ? '' : 'text-zinc-600'}>Code Master</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-zinc-300">
-                      {features.image ? <Check className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-500 shrink-0" />}
-                      <span className={features.image ? '' : 'text-zinc-600'}>Vision AI</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-zinc-300">
-                      {features.tools ? <Check className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-500 shrink-0" />}
-                      <span className={features.tools ? '' : 'text-zinc-600'}>Automation Tools</span>
+                      {p.id !== 'FREE' ? <Check className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-500 shrink-0" />}
+                      <span className={p.id !== 'FREE' ? '' : 'text-zinc-600'}>Priority Support</span>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-zinc-300">
                       <Check className="w-4 h-4 text-green-500 shrink-0" />
@@ -179,7 +164,7 @@ export function PricingPanel({ user, planSettings, onClose, onUpgrade }: Pricing
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <>
-                        {isCurrent ? 'Active' : isDowngrade ? 'Downgrade' : (user?.role === 'admin' || user?.role === 'owner' ? 'Upgrade' : 'Coming Soon')} 
+                        {isCurrent ? 'Active' : isDowngrade ? 'Downgrade' : 'Upgrade'} 
                         {!isCurrent && <ArrowRight className="w-4 h-4" />}
                       </>
                     )}
