@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { handleChat } from "./server/chat_logic.ts";
+import { handleChat } from "./server/chat_logic";
 
 dotenv.config();
 

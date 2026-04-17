@@ -1,3 +1,5 @@
+import ModelClient, { isUnexpected } from "@azure-rest/ai-inference";
+import { AzureKeyCredential } from "@azure/core-auth";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -6,17 +8,13 @@ dotenv.config();
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_PAT = process.env.GITHUB_PAT || process.env.GITHUB_GROK || GITHUB_TOKEN;
-const endpoint = "https://models.github.ai/inference/chat/completions";
+const endpoint = "https://models.github.ai/inference";
 
 const FREE_MODELS = ["openai/gpt-4.1", "deepseek-r1", "grok-3"];
 
 export async function handleChat(req: any, res: any) {
   try {
     const { message, history = [], module = 'chat', systemPrompt: customSystemPrompt, model = "openai/gpt-4.1" } = req.body;
-
-    console.log(`[Chat Request] Model: ${model}, Module: ${module}`);
-    // Only log message length for security/privacy if preferred, but user requested request body logging
-    console.log(`[Chat Request] Body:`, JSON.stringify({ model, module, messageLength: message?.length }));
 
     // --- PRO CHECK ---
     const isFreeModel = FREE_MODELS.includes(model);
@@ -88,14 +86,16 @@ export async function handleChat(req: any, res: any) {
       });
     }
 
+    const client = ModelClient(endpoint, new AzureKeyCredential(token));
+
     // Map frontend IDs to actual model identifiers
     let actualModel = model;
     if (model === "deepseek-r1") {
-      actualModel = "deepseek/DeepSeek-R1";
+      actualModel = "DeepSeek-R1"; // GitHub Models uses exactly "DeepSeek-R1"
     } else if (model === "grok-3") {
-      actualModel = "xai/grok-3";
+      actualModel = "xai/grok-3"; // Some endpoints use xai/grok-3, some use grok-3. We'll leave as is.
     } else if (model === "openai/gpt-4.1") {
-      actualModel = "openai/gpt-4o"; 
+      actualModel = "gpt-4o"; // GitHub Models uses gpt-4o, there is no gpt-4.1 on GH Models
     }
 
     let systemPrompt = customSystemPrompt || "You are a helpful assistant.";
@@ -122,41 +122,27 @@ export async function handleChat(req: any, res: any) {
     let responseText = "";
 
     if (FREE_MODELS.includes(model) || model.startsWith("openai/") || model === "deepseek-r1" || model === "grok-3") {
-      const gitRes = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const response = await client.path("/chat/completions").post({
+        body: {
           messages,
           temperature: 1.0,
           top_p: 1.0,
           model: actualModel 
-        })
+        }
       });
 
-      const data = await gitRes.json();
-      console.log(`[GitHub API Response] Status: ${gitRes.status}`);
-      if (!gitRes.ok) {
-        console.error(`[GitHub API Error] Details:`, JSON.stringify(data));
-        throw data.error || new Error(data.message || "Unexpected GitHub Models API response");
+      if (isUnexpected(response)) {
+        throw response.body.error || new Error("Unexpected API response");
       }
-      responseText = data.choices[0].message.content;
-      console.log(`[GitHub API Success] Response Length: ${responseText?.length}`);
+      responseText = response.body.choices[0].message.content;
     } else {
       const prompt = messages.map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join("\n");
-      console.log(`[External API Request] Model: ${actualModel}`);
       const externalRes = await fetch(
         `https://shaikhs-ai.rajageminiwala.workers.dev/chat/get?prompt=${encodeURIComponent(prompt)}&model=${actualModel}`
       );
-      if (!externalRes.ok) {
-        console.error(`[External API Error] Status: ${externalRes.status}`);
-        throw new Error("External API Error");
-      }
+      if (!externalRes.ok) throw new Error("External API Error");
       const data = await externalRes.json();
       responseText = data.response || "";
-      console.log(`[External API Success] Response Length: ${responseText?.length}`);
     }
 
     res.json({ text: responseText });
