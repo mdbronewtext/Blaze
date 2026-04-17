@@ -20,7 +20,9 @@ export default async function handler(req, res) {
           { role: "system", content: "You are a helpful assistant." },
           { role: "user", content: req.body.message }
         ],
-        model: "openai/gpt-4.1"
+        model: req.body.model || "openai/gpt-4.1",
+        temperature: 1,
+        top_p: 1
       }
     });
 

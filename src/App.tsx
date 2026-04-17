@@ -106,12 +106,22 @@ export default function App() {
     { id: "gemini-2.5-pro", name: "Gemini-2.5-pro", description: "Multi AI", icon: "✨", type: "api", enabled: true },
     { id: "grok-4", name: "Grok 4", description: "Multi AI", icon: "⚡", type: "api", enabled: true },
     { id: "gemini-imagen-4", name: "Gemini-imagen-4", description: "Multi AI", icon: "🎨", type: "api", enabled: true },
-    { id: "openai/gpt-4.1", name: "GPT-4.1", description: "GitHub AI", icon: "💬", type: "github", enabled: true }
+    { id: "openai/gpt-4.1", name: "GPT-4.1", description: "GitHub AI", icon: "💬", type: "github", enabled: true },
+    { id: "xai/grok-3", name: "Grok 3", description: "GitHub AI", icon: "🌌", type: "github", enabled: true }
   ];
 
   const [aiModels, setAiModels] = useState(() => {
     const saved = localStorage.getItem("models");
-    return saved ? JSON.parse(saved) : DEFAULT_MODELS;
+    if (!saved) return DEFAULT_MODELS;
+    const models = JSON.parse(saved);
+    // Ensure new models from DEFAULT_MODELS are added to the saved list
+    const missingModels = DEFAULT_MODELS.filter(dm => !models.some((m: any) => m.id === dm.id));
+    if (missingModels.length > 0) {
+      const updated = [...models, ...missingModels];
+      localStorage.setItem("models", JSON.stringify(updated));
+      return updated;
+    }
+    return models;
   });
 
   const toggleModel = (id: string) => {
@@ -618,7 +628,7 @@ ${input}
           const response = await fetch('/api/github-chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: prompt })
+            body: JSON.stringify({ message: prompt, model: selectedAIModel })
           });
           if (!response.ok) throw new Error('API Error');
           const data = await response.json();
