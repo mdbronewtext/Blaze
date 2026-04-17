@@ -2,12 +2,9 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { handleChat } from "./server/chat_logic.ts";
+import { handleChat } from "./server/chat_logic";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export const app = express();
 app.use(express.json({ limit: '50mb' }));
