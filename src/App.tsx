@@ -643,13 +643,26 @@ ${input}
 
         fullContent = text.trim();
         
-        // Simulate typing for better UX
+        // Simulate streaming for smoother UI
         const words = fullContent.split(' ');
         let currentText = '';
+        let lastUpdateTime = 0;
+        const UPDATE_INTERVAL = 30; // ms between state updates
+
         for (let i = 0; i < words.length; i++) {
           if (abortControllerRef.current?.signal.aborted) break;
+          
           currentText += words[i] + (i < words.length - 1 ? ' ' : '');
-          setStreamingMessage(currentText);
+          
+          const now = performance.now();
+          if (now - lastUpdateTime > UPDATE_INTERVAL || i === words.length - 1) {
+            setStreamingMessage(currentText);
+            lastUpdateTime = now;
+            // Wait for one frame to let React render
+            await new Promise(resolve => requestAnimationFrame(resolve));
+          }
+          
+          // Small delay for natural typing feel
           await new Promise(resolve => setTimeout(resolve, 20));
         }
       } catch (err: any) {

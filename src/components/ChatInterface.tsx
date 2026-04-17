@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { 
   Send, 
   Zap, 
@@ -42,8 +43,9 @@ import * as pdfjsLib from 'pdfjs-dist';
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
-const SafeImage = ({ src, alt }: { src: string, alt: string }) => {
+const SafeImage = React.memo(({ src, alt }: { src: string, alt: string }) => {
   const [downloading, setDownloading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const handleDownload = async () => {
     try {
@@ -60,7 +62,7 @@ const SafeImage = ({ src, alt }: { src: string, alt: string }) => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Download failed:', error);
+      console.error('Download balance failed:', error);
       // Fallback for cross-origin issues
       const link = document.createElement('a');
       link.href = src;
@@ -73,15 +75,16 @@ const SafeImage = ({ src, alt }: { src: string, alt: string }) => {
   };
 
   return (
-    <div className="flex flex-col items-center gap-3 w-full group/img my-4">
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl bg-black/20 group-hover:border-white/20 transition-all p-1">
+    <div className="flex flex-col items-center gap-3 w-full group/img my-4 min-h-[100px]">
+      <div className={`relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl bg-black/20 group-hover:border-white/20 transition-all p-1 ${!loaded ? 'animate-pulse bg-zinc-900' : ''}`}>
         <img 
           src={src} 
           alt={alt} 
-          className="max-w-full h-auto rounded-xl object-contain select-none pointer-events-none cursor-default" 
+          className={`max-w-full h-auto rounded-xl object-contain select-none pointer-events-none cursor-default transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} 
           referrerPolicy="no-referrer"
           onContextMenu={(e) => e.preventDefault()}
           onDragStart={(e) => e.preventDefault()}
+          onLoad={() => setLoaded(true)}
         />
         {/* Overlay to block even more interactions */}
         <div 
@@ -105,7 +108,7 @@ const SafeImage = ({ src, alt }: { src: string, alt: string }) => {
       </button>
     </div>
   );
-};
+});
 
 interface ChatInterfaceProps {
   messages: Message[];
@@ -128,7 +131,6 @@ interface ChatInterfaceProps {
 
 const MessageItem = React.memo(({ 
   msg, 
-  idx, 
   copiedId, 
   handleCopy, 
   onSaveToMemory,
@@ -137,7 +139,6 @@ const MessageItem = React.memo(({
   getModelInfo
 }: { 
   msg: Message; 
-  idx: number; 
   copiedId: string | null; 
   handleCopy: (id: string, text: string) => void; 
   onSaveToMemory?: (content: string) => void;
@@ -145,117 +146,123 @@ const MessageItem = React.memo(({
   formatSize: (bytes?: number) => string;
   getModelInfo: (id: string) => any;
 }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.3, ease: "easeOut" }}
-    className={`flex gap-3 sm:gap-4 group ${msg.sender === 'ai' ? 'max-w-4xl mx-auto' : 'max-w-3xl ml-auto flex-row-reverse'}`}
-  >
-    <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center shadow-sm ${
-      msg.sender === 'ai' 
-        ? 'bg-zinc-800 text-zinc-300 border border-zinc-700' 
-        : 'bg-blue-600 text-white'
-    }`}>
-      {msg.sender === 'ai' ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
-    </div>
-    <div className={`space-y-1.5 min-w-0 w-full flex flex-col ${msg.sender === 'ai' ? 'items-start' : 'items-end'}`}>
-      {msg.sender === 'ai' && (
-        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-zinc-300 ml-1">
-          <span>{getModelInfo(msg.modelUsed || '').icon}</span>
-          <span>{getModelInfo(msg.modelUsed || '').name}</span>
-        </div>
-      )}
-      <div className={`p-4 text-[15px] leading-relaxed break-words overflow-hidden glass-card depth-shadow relative ${
+  <div className="py-4">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className={`flex gap-3 sm:gap-4 group ${msg.sender === 'ai' ? 'max-w-4xl mx-auto' : 'max-w-3xl ml-auto flex-row-reverse'}`}
+    >
+      <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center shadow-sm ${
         msg.sender === 'ai' 
-          ? 'border border-white/5 text-zinc-200 rounded-2xl rounded-tl-sm w-full' 
-          : 'bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium rounded-2xl rounded-tr-sm border border-blue-400/20'
+          ? 'bg-zinc-800 text-zinc-300 border border-zinc-700' 
+          : 'bg-blue-600 text-white'
       }`}>
+        {msg.sender === 'ai' ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
+      </div>
+      <div className={`space-y-1.5 min-w-0 w-full flex flex-col ${msg.sender === 'ai' ? 'items-start' : 'items-end'}`}>
         {msg.sender === 'ai' && (
-          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
-            <button 
-              type="button"
-              onClick={() => handleCopy(msg.id, msg.message)}
-              className="p-1.5 bg-zinc-900/50 backdrop-blur-sm border border-white/10 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-all shadow-lg flex items-center gap-1.5 px-2.5"
-              title="Copy message"
-            >
-              {copiedId === msg.id ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-green-400" />
-                  <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span className="text-[10px] font-bold text-zinc-400 group-hover:text-white uppercase tracking-wider">Copy</span>
-                </>
-              )}
-            </button>
+          <div className="flex items-center gap-1.5 text-[13px] font-semibold text-zinc-300 ml-1">
+            <span>{getModelInfo(msg.modelUsed || '').icon}</span>
+            <span>{getModelInfo(msg.modelUsed || '').name}</span>
           </div>
         )}
-        {msg.attachment && (
-          <div className="mb-3">
-            {msg.attachment.type === 'image' ? (
-              <SafeImage src={msg.attachment.url} alt={msg.attachment.name || "Attachment"} />
-            ) : (
-              <div className="flex items-center gap-3 bg-black/20 p-3 rounded-lg border border-white/10">
-                <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
-                  {msg.attachment.mimeType === 'application/pdf' ? <FileSearch className="w-5 h-5 text-red-400" /> : <FileText className="w-5 h-5 text-blue-400" />}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{msg.attachment.name}</p>
-                  <p className="text-[10px] text-zinc-500 uppercase">{formatSize(msg.attachment.size)}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="markdown-body overflow-x-auto">
-          <ReactMarkdown
-            components={{
-              img({ src, alt }: any) {
-                return <SafeImage src={src} alt={alt} />;
-              },
-              code({ node, inline, className, children, ...props }: any) {
-                const match = /language-(\w+)/.exec(className || '');
-                return !inline && match ? (
-                  <CodeBlock
-                    language={match[1]}
-                    value={String(children).replace(/\n$/, '')}
-                  />
+        <div className={`p-4 text-[15px] leading-relaxed break-words overflow-hidden glass-card depth-shadow relative ${
+          msg.sender === 'ai' 
+            ? 'border border-white/5 text-zinc-200 rounded-2xl rounded-tl-sm w-full' 
+            : 'bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium rounded-2xl rounded-tr-sm border border-blue-400/20'
+        }`}>
+          {msg.sender === 'ai' && (
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+              <button 
+                type="button"
+                onClick={() => handleCopy(msg.id, msg.message)}
+                className="p-1.5 bg-zinc-900/50 backdrop-blur-sm border border-white/10 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-all shadow-lg flex items-center gap-1.5 px-2.5"
+                title="Copy message"
+              >
+                {copiedId === msg.id ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-green-400" />
+                    <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">Copied</span>
+                  </>
                 ) : (
-                  <code className={`${className} bg-black/20 px-1.5 py-0.5 rounded-md font-mono text-[13px]`} {...props}>
-                    {children}
-                  </code>
-                );
-              }
-            }}
-          >
-            {msg.message}
-          </ReactMarkdown>
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold text-zinc-400 group-hover:text-white uppercase tracking-wider">Copy</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+          {msg.attachment && (
+            <div className="mb-3">
+              {msg.attachment.type === 'image' ? (
+                <SafeImage src={msg.attachment.url} alt={msg.attachment.name || "Attachment"} />
+              ) : (
+                <div className="flex items-center gap-3 bg-black/20 p-3 rounded-lg border border-white/10">
+                  <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                    {msg.attachment.mimeType === 'application/pdf' ? <FileSearch className="w-5 h-5 text-red-400" /> : <FileText className="w-5 h-5 text-blue-400" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{msg.attachment.name}</p>
+                    <p className="text-[10px] text-zinc-500 uppercase">{formatSize(msg.attachment.size)}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="markdown-body overflow-x-auto">
+            <ReactMarkdown
+              components={{
+                img({ src, alt }: any) {
+                  return <SafeImage src={src} alt={alt} />;
+                },
+                code({ node, inline, className, children, ...props }: any) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  return !inline && match ? (
+                    <CodeBlock
+                      language={match[1]}
+                      value={String(children).replace(/\n$/, '')}
+                    />
+                  ) : (
+                    <code className={`${className} bg-black/20 px-1.5 py-0.5 rounded-md font-mono text-[13px]`} {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+              }}
+            >
+              {msg.message}
+            </ReactMarkdown>
+          </div>
+        </div>
+        
+        <div className={`flex items-center gap-3 px-1 mt-1 ${msg.sender === 'ai' ? 'flex-row' : 'flex-row-reverse'}`}>
+          <span className="text-[11px] text-zinc-500 font-medium">
+            {formatTime(msg.timestamp)}
+          </span>
+          
+          {msg.sender === 'ai' && (
+            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <button 
+                type="button"
+                onClick={() => onSaveToMemory?.(msg.message)}
+                className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 rounded-md transition-colors"
+                title="Save to Memory"
+              >
+                <Brain className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
-      
-      <div className={`flex items-center gap-3 px-1 mt-1 ${msg.sender === 'ai' ? 'flex-row' : 'flex-row-reverse'}`}>
-        <span className="text-[11px] text-zinc-500 font-medium">
-          {formatTime(msg.timestamp)}
-        </span>
-        
-        {msg.sender === 'ai' && (
-          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button 
-              type="button"
-              onClick={() => onSaveToMemory?.(msg.message)}
-              className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 rounded-md transition-colors"
-              title="Save to Memory"
-            >
-              <Brain className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  </motion.div>
-));
+    </motion.div>
+  </div>
+), (prev, next) => {
+  return prev.msg.id === next.msg.id && 
+         prev.msg.message === next.msg.message && 
+         prev.copiedId === next.copiedId;
+});
 
 const StreamingMessageItem = React.memo(({ 
   selectedAIModel, 
@@ -319,7 +326,6 @@ const StreamingMessageItem = React.memo(({
                     <CodeBlock
                       language={match[1]}
                       value={String(children).replace(/\n$/, '')}
-                      {...props}
                     />
                   ) : (
                     <code className={`${className} bg-black/20 px-1.5 py-0.5 rounded-md font-mono text-[13px]`} {...props}>
@@ -387,25 +393,40 @@ export const ChatInterface = React.memo(({
   const recognitionRef = useRef<any>(null);
   const isRecordingRef = useRef(false);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const [atBottom, setAtBottom] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
 
   const selectedModelData = aiModels?.find(m => m.id === selectedAIModel) || aiModels?.[0] || { name: 'Unknown', icon: '💬' };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const getModelInfo = useCallback((id: string) => {
+    return aiModels.find(m => m.id === id) || aiModels[0];
+  }, [aiModels]);
+
+  const scrollToBottom = useCallback((force = false) => {
+    if (force || atBottom) {
+      virtuosoRef.current?.scrollToIndex({
+        index: messages.length + (isTyping ? 1 : 0),
+        behavior: force ? 'auto' : 'smooth',
+        align: 'end'
+      });
+    }
+  }, [messages.length, isTyping, atBottom]);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isTyping]);
+  }, [messages.length, isTyping, streamingMessage, scrollToBottom]);
 
   useEffect(() => {
     const handleResize = () => {
       // Scroll to bottom immediately on resize (e.g., keyboard open)
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      virtuosoRef.current?.scrollToIndex({
+        index: messages.length + (isTyping ? 1 : 0),
+        behavior: 'auto',
+        align: 'end'
+      });
     };
     
     window.addEventListener('resize', handleResize);
@@ -419,7 +440,7 @@ export const ChatInterface = React.memo(({
         window.visualViewport.removeEventListener('resize', handleResize);
       }
     };
-  }, []);
+  }, [messages.length, isTyping]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -442,7 +463,6 @@ export const ChatInterface = React.memo(({
         recog.lang = 'en-US';
 
         recog.onresult = (event: any) => {
-          console.log("Result received");
           let interimTranscript = '';
           let finalTranscript = '';
 
@@ -454,44 +474,29 @@ export const ChatInterface = React.memo(({
             }
           }
 
-          // Append final transcript to input, or show interim
           if (finalTranscript) {
             setInput(prev => prev + (prev ? ' ' : '') + finalTranscript);
           }
         };
 
         recog.onerror = (event: any) => {
-          console.error('Error occurred', event.error);
           if (event.error === 'not-allowed') {
             setIsRecording(false);
             isRecordingRef.current = false;
             alert('Microphone access denied ❌. Please allow microphone access in your browser settings or try opening the app in a NEW TAB.');
           } else if (event.error === 'no-speech') {
-            // Ignore no-speech errors, it will auto-restart if continuous
-            console.log('No speech detected, continuing...');
-          } else if (event.error === 'aborted') {
-            console.log('Recognition aborted');
-            setIsRecording(false);
-            isRecordingRef.current = false;
-          } else if (event.error === 'network') {
-            setIsRecording(false);
-            isRecordingRef.current = false;
-            alert('Network error occurred during speech recognition.');
+            // Ignore no-speech errors
           } else {
             setIsRecording(false);
             isRecordingRef.current = false;
-            alert('Voice input unstable, try again.');
           }
         };
 
         recog.onend = () => {
-          console.log("Recognition stopped");
           if (isRecordingRef.current) {
-            console.log("Auto-stopped, restarting...");
             try {
               recog.start();
             } catch (e) {
-              console.error("Failed to restart recognition:", e);
               setIsRecording(false);
               isRecordingRef.current = false;
             }
@@ -507,56 +512,35 @@ export const ChatInterface = React.memo(({
 
   const toggleRecording = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
-    console.log("Mic clicked");
     
     if (!recognitionRef.current) {
-      console.log("Speech recognition not initialized");
       alert('Voice not supported on this browser ❌');
       return;
     }
 
     if (isRecordingRef.current) {
-      console.log("Stopping recognition manually");
       isRecordingRef.current = false;
       setIsRecording(false);
       recognitionRef.current.stop();
     } else {
       try {
-        console.log("Starting recognition");
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          console.log("MediaDevices API not available");
-          alert('Voice not supported on this browser ❌. Please click the "Open in New Tab" button (↗️) at the top right of the preview window.');
+          alert('Voice not supported on this browser ❌. Please open in a new tab.');
           return;
         }
         
-        console.log("Requesting microphone permission...");
-        // Explicitly request microphone permission first to avoid 'not-allowed' error in some browsers
-        // Use a timeout in case the browser suppresses the prompt and hangs the promise
-        const stream = await Promise.race([
-          navigator.mediaDevices.getUserMedia({ audio: true }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Permission request timed out. Please check your browser settings or open in a new tab.")), 5000))
-        ]) as MediaStream;
-        
-        // Stop the stream tracks immediately since we only needed it to trigger the permission prompt
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (stream && stream.getTracks) {
           stream.getTracks().forEach(track => track.stop());
         }
         
-        console.log("Recognition started");
         isRecordingRef.current = true;
         setIsRecording(true);
         recognitionRef.current.start();
       } catch (err: any) {
-        console.error("Microphone access error:", err.message || err);
         isRecordingRef.current = false;
         setIsRecording(false);
-        const isPermissionError = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message === 'Permission denied';
-        
-        if (isPermissionError) {
-          alert('Microphone access denied ❌\n\nTo use voice features in the preview, please:\n1. Click the "Open in New Tab" button (↗️) at the top right.\n2. Allow microphone access in the new tab.\n3. Check your browser site settings.');
-        } else {
-          alert(`Could not start microphone: ${err.message || 'Unknown error'}. Please try again.`);
-        }
+        alert('Microphone access denied ❌');
       }
     }
   };
@@ -575,7 +559,6 @@ export const ChatInterface = React.memo(({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
-      // Reset height
       e.currentTarget.style.height = 'auto';
     }
   };
@@ -645,7 +628,6 @@ export const ChatInterface = React.memo(({
       let extractedText = '';
 
       if (type === 'image') {
-        // Compress image
         result = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => {
@@ -654,8 +636,7 @@ export const ChatInterface = React.memo(({
               const canvas = document.createElement('canvas');
               let width = img.width;
               let height = img.height;
-              const maxDim = 1024; // Max dimension for AI processing
-
+              const maxDim = 1024;
               if (width > height && width > maxDim) {
                 height *= maxDim / width;
                 width = maxDim;
@@ -663,13 +644,11 @@ export const ChatInterface = React.memo(({
                 width *= maxDim / height;
                 height = maxDim;
               }
-
               canvas.width = width;
               canvas.height = height;
               const ctx = canvas.getContext('2d');
               if (ctx) {
                 ctx.drawImage(img, 0, 0, width, height);
-                // Compress to JPEG with 0.8 quality
                 resolve(canvas.toDataURL('image/jpeg', 0.8));
               } else {
                 resolve(e.target?.result as string);
@@ -682,7 +661,6 @@ export const ChatInterface = React.memo(({
           reader.readAsDataURL(file);
         });
       } else {
-        // Handle normal files
         result = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result as string);
@@ -691,9 +669,7 @@ export const ChatInterface = React.memo(({
 
         if (file.type === 'application/pdf') {
           extractedText = await extractPdfText(result);
-        } else if (file.type.startsWith('text/') || 
-                   ['application/json', 'application/javascript', 'text/javascript'].includes(file.type) ||
-                   file.name.endsWith('.css') || file.name.endsWith('.html')) {
+        } else if (file.type.startsWith('text/') || ['application/json', 'application/javascript'].includes(file.type)) {
           const textReader = new FileReader();
           extractedText = await new Promise<string>((resolve) => {
             textReader.onload = (e) => resolve(e.target?.result as string);
@@ -712,8 +688,7 @@ export const ChatInterface = React.memo(({
       });
       setShowAttachMenu(false);
     } catch (err) {
-      console.error("Error processing file:", err);
-      alert("Error processing file. Please try again.");
+      alert("Error processing file.");
     } finally {
       setIsProcessing(false);
     }
@@ -756,10 +731,6 @@ export const ChatInterface = React.memo(({
     return plans.indexOf(userPlan) >= plans.indexOf(minPlan);
   };
 
-  const displayedMessages = useMemo(() => {
-    return messages.slice(-50);
-  }, [messages]);
-
   return (
     <div 
       className={`flex-1 flex flex-col h-full bg-zinc-950 relative overflow-hidden font-sans transition-colors ${isDragging ? 'bg-blue-900/10' : ''}`}
@@ -791,7 +762,6 @@ export const ChatInterface = React.memo(({
       {/* Header / Mode Selector */}
       <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-xl z-10">
         <div className="flex items-center gap-3 relative">
-          {/* Model Selector */}
           <div className="relative">
             <button 
               type="button"
@@ -852,7 +822,6 @@ export const ChatInterface = React.memo(({
               )}
             </AnimatePresence>
           </div>
-
           <NotificationBell user={currentUser} />
         </div>
         <div className="flex bg-zinc-900/80 p-1 rounded-xl border border-zinc-800/50 shadow-sm">
@@ -886,62 +855,89 @@ export const ChatInterface = React.memo(({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-8 scrollbar-hide relative">
-        <div className="max-w-3xl mx-auto w-full space-y-8">
+      <div className="flex-1 min-h-0 relative">
+        <Virtuoso
+          ref={virtuosoRef}
+          data={messages}
+          initialTopMostItemIndex={messages.length - 1}
+          atBottomStateChange={setAtBottom}
+          className="scrollbar-hide"
+          followOutput={(isAtBottom) => isAtBottom ? 'smooth' : false}
+          components={{
+            Header: () => (
+              <div className="pt-4 sm:pt-6">
+                {isLoading ? (
+                  <div className="max-w-3xl mx-auto px-4">
+                    <ChatSkeleton />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center space-y-8 max-w-2xl mx-auto mt-10 px-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-zinc-800 to-zinc-900 rounded-3xl flex items-center justify-center border border-zinc-700/50 shadow-2xl shrink-0">
+                      <Sparkles className="w-10 h-10 text-blue-400" />
+                    </div>
+                    <div className="space-y-3 px-4">
+                      <h2 className="text-3xl font-semibold text-white tracking-tight">How can I help you today?</h2>
+                      <p className="text-zinc-400 text-base leading-relaxed max-w-md mx-auto">
+                        I'm your next-generation AI assistant. Choose a mode and let's build something amazing.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full px-4 mt-8">
+                      <QuickAction label="Write a blog post" onClick={() => setInput("Write a blog post about the future of AI")} />
+                      <QuickAction label="Debug my code" onClick={() => setInput("Can you help me debug this React component?")} />
+                      <QuickAction label="Business ideas" onClick={() => setInput("Give me 5 viral business ideas for 2026")} />
+                      <QuickAction label="Prompt enhancer" onClick={() => setInput("Enhance this prompt: 'make a cool logo'")} />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ),
+            Footer: () => (
+              <div className="pb-8 px-4 sm:px-6">
+                {isTyping && (
+                  <div className="py-4">
+                    <StreamingMessageItem 
+                      selectedAIModel={selectedAIModel}
+                      streamingMessage={streamingMessage}
+                      getModelInfo={getModelInfo}
+                      handleCopy={handleCopy}
+                      copiedId={copiedId}
+                    />
+                  </div>
+                )}
+                <div className="h-4" />
+              </div>
+            )
+          }}
+          itemContent={(_, msg) => (
+            <div className="px-4 sm:px-6">
+              <MessageItem 
+                key={msg.id}
+                msg={msg}
+                copiedId={copiedId}
+                handleCopy={handleCopy}
+                onSaveToMemory={onSaveToMemory}
+                formatTime={formatTime}
+                formatSize={formatSize}
+                getModelInfo={getModelInfo}
+              />
+            </div>
+          )}
+        />
+        
         <AnimatePresence>
-          {showCamera && (
-            <CameraCapture 
-              onCapture={handleCameraCapture}
-              onClose={() => setShowCamera(false)}
-            />
+          {!atBottom && messages.length > 0 && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 10 }}
+              onClick={() => scrollToBottom(true)}
+              className="absolute bottom-4 right-8 p-3 rounded-full bg-blue-600 text-white shadow-2xl hover:bg-blue-500 transition-all z-50 flex items-center gap-2 border border-blue-400/20 backdrop-blur-md"
+            >
+              <ChevronDown className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-wider pr-1">Recent Messages</span>
+            </motion.button>
           )}
         </AnimatePresence>
-        {isLoading ? (
-          <ChatSkeleton />
-        ) : messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center space-y-8 max-w-2xl mx-auto mt-10">
-            <div className="w-20 h-20 bg-gradient-to-br from-zinc-800 to-zinc-900 rounded-3xl flex items-center justify-center border border-zinc-700/50 shadow-2xl shrink-0">
-              <Sparkles className="w-10 h-10 text-blue-400" />
-            </div>
-            <div className="space-y-3 px-4">
-              <h2 className="text-3xl font-semibold text-white tracking-tight">How can I help you today?</h2>
-              <p className="text-zinc-400 text-base leading-relaxed max-w-md mx-auto">
-                I'm your next-generation AI assistant. Choose a mode and let's build something amazing.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full px-4 mt-8">
-              <QuickAction label="Write a blog post" onClick={() => setInput("Write a blog post about the future of AI")} />
-              <QuickAction label="Debug my code" onClick={() => setInput("Can you help me debug this React component?")} />
-              <QuickAction label="Business ideas" onClick={() => setInput("Give me 5 viral business ideas for 2026")} />
-              <QuickAction label="Prompt enhancer" onClick={() => setInput("Enhance this prompt: 'make a cool logo'")} />
-            </div>
-          </div>
-        ) : null}
-
-        {displayedMessages.map((msg, idx) => (
-          <MessageItem 
-            key={msg.id || idx}
-            msg={msg}
-            idx={idx}
-            copiedId={copiedId}
-            handleCopy={handleCopy}
-            onSaveToMemory={onSaveToMemory}
-            formatTime={formatTime}
-            formatSize={formatSize}
-            getModelInfo={(id: string) => aiModels.find(m => m.id === id) || aiModels[0]}
-          />
-        ))}
-        {isTyping && (
-          <StreamingMessageItem 
-            selectedAIModel={selectedAIModel}
-            streamingMessage={streamingMessage}
-            getModelInfo={(id: string) => aiModels.find(m => m.id === id) || aiModels[0]}
-            handleCopy={handleCopy}
-            copiedId={copiedId}
-          />
-        )}
-          <div ref={messagesEndRef} />
-        </div>
       </div>
 
       {/* Input Area */}
@@ -949,7 +945,6 @@ export const ChatInterface = React.memo(({
         <div className="absolute top-0 left-0 right-0 h-20 -translate-y-full bg-gradient-to-t from-zinc-950 to-transparent pointer-events-none" />
         <div className="max-w-3xl mx-auto relative">
           
-          {/* Attachment Preview & Analysis Modes */}
           <AnimatePresence>
             {(attachment || isProcessing) && (
               <motion.div 
@@ -991,31 +986,14 @@ export const ChatInterface = React.memo(({
                   </div>
                 </div>
 
-                {/* Analysis Modes */}
                 {!isProcessing && attachment && (
                   <div className="flex flex-wrap gap-2">
                     <button 
                       type="button"
-                      onClick={() => handleSubmit(undefined, "Summarize this file and extract key points.")}
-                      className="px-3 py-1.5 bg-accent/10 border border-accent/30 rounded-full text-xs font-bold text-accent hover:bg-accent/20 transition-all flex items-center gap-2"
+                      onClick={() => handleSubmit(undefined, "Summarize this file.")}
+                      className="px-3 py-1.5 bg-accent/10 border border-accent/30 rounded-full text-xs font-bold text-accent"
                     >
-                      <Sparkles className="w-3 h-3" /> Summarize
-                    </button>
-                    {attachment.type === 'file' && (
-                      <button 
-                        type="button"
-                        onClick={() => handleSubmit(undefined, "Explain the code or content in this file.")}
-                        className="px-3 py-1.5 bg-purple-600/10 border border-purple-500/30 rounded-full text-xs font-bold text-purple-400 hover:bg-purple-600/20 transition-all flex items-center gap-2"
-                      >
-                        <FileCode className="w-3 h-3" /> Explain Content
-                      </button>
-                    )}
-                    <button 
-                      type="button"
-                      onClick={() => handleSubmit(undefined, "Extract key data points and insights from this.")}
-                      className="px-3 py-1.5 bg-emerald-600/10 border border-emerald-500/30 rounded-full text-xs font-bold text-emerald-400 hover:bg-emerald-600/20 transition-all flex items-center gap-2"
-                    >
-                      <FileJson className="w-3 h-3" /> Extract Insights
+                      Summarize
                     </button>
                   </div>
                 )}
@@ -1023,9 +1001,7 @@ export const ChatInterface = React.memo(({
             )}
           </AnimatePresence>
 
-          <form onSubmit={handleSubmit} className="relative group shadow-2xl flex items-end gap-2" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}>
-            
-            {/* Attach Menu */}
+          <form onSubmit={handleSubmit} className="relative group shadow-2xl flex items-end gap-2">
             <div className="relative" ref={attachMenuRef}>
               <button
                 type="button"
@@ -1041,7 +1017,7 @@ export const ChatInterface = React.memo(({
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute bottom-full left-0 mb-2 w-48 glass-panel border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50"
+                    className="absolute bottom-full left-0 mb-2 w-48 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden z-50"
                   >
                     <button
                       type="button"
@@ -1053,14 +1029,14 @@ export const ChatInterface = React.memo(({
                     <button
                       type="button"
                       onClick={() => { photoInputRef.current?.click(); setShowAttachMenu(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left border-t border-zinc-800/50"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left"
                     >
                       <ImageIcon className="w-4 h-4" /> Upload Photo
                     </button>
                     <button
                       type="button"
                       onClick={startCamera}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left border-t border-zinc-800/50"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left"
                     >
                       <Camera className="w-4 h-4" /> Camera
                     </button>
@@ -1077,7 +1053,7 @@ export const ChatInterface = React.memo(({
                 placeholder={isRecording ? "Listening..." : `Message ${selectedModelData.name}...`}
                 rows={1}
                 disabled={isTyping}
-                className={`w-full glass-panel border border-white/10 text-white rounded-3xl pl-6 pr-24 py-4 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-500 resize-none overflow-hidden min-h-[56px] max-h-[200px] depth-shadow ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`w-full glass-panel border border-white/10 text-white rounded-3xl pl-6 pr-24 py-4 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-500 resize-none overflow-hidden min-h-[56px] max-h-[200px] ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
                 style={{ height: 'auto' }}
               />
               <AnimatePresence mode="wait">
@@ -1087,95 +1063,49 @@ export const ChatInterface = React.memo(({
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
                     type="button"
                     onClick={onStopGenerating}
                     className="absolute right-2 bottom-2 p-2.5 rounded-full bg-red-500 text-white shadow-lg flex items-center gap-2 px-4"
                   >
                     <div className="w-2 h-2 bg-white rounded-sm animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Stop ⛔</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Stop</span>
                   </motion.button>
                 ) : (
                   <div className="absolute right-2 bottom-2 flex items-center gap-2 z-20">
-                    {privacyMode && (
-                      <motion.div 
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border border-accent/20 rounded-full text-[10px] font-bold text-accent uppercase tracking-wider"
-                      >
-                        <Lock className="w-3 h-3" />
-                        Private
-                      </motion.div>
-                    )}
-                    
-                    {/* Mic Button */}
                     <motion.button
                       type="button"
                       onClick={(e) => toggleRecording(e)}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className={`p-2.5 rounded-full transition-all flex items-center justify-center relative z-20 ${
-                        isRecording 
-                          ? 'bg-red-500/20 text-red-500' 
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
-                      } ${false ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      title={isRecording ? "Stop recording" : "Voice input"}
+                      className={`p-2.5 rounded-full transition-all ${isRecording ? 'bg-red-500/20 text-red-500' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
                     >
-                      {isRecording && (
-                        <motion.div 
-                          animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                          transition={{ duration: 1.5, repeat: Infinity }}
-                          className="absolute inset-0 bg-red-500 rounded-full"
-                        />
-                      )}
-                      <Mic className={`w-4 h-4 relative z-10 ${isRecording ? 'animate-pulse' : ''}`} />
+                      <Mic className={`w-4 h-4 ${isRecording ? 'animate-pulse' : ''}`} />
                     </motion.button>
-
                     <motion.button
-                      key="send-button"
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
                       type="button"
                       onClick={(e) => handleSubmit(e)}
                       disabled={(!input.trim() && !attachment) || isProcessing}
-                      className={`p-2.5 rounded-full transition-all ${
-                        (input.trim() || attachment) && !isProcessing
-                          ? 'bg-accent text-white hover:opacity-90 shadow-lg' 
-                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                      }`}
+                      className={`p-2.5 rounded-full transition-all ${(input.trim() || attachment) && !isProcessing ? 'bg-blue-600 text-white shadow-lg' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
                     >
-                      {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 ml-0.5" />}
+                      {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </motion.button>
                   </div>
                 )}
               </AnimatePresence>
             </div>
           </form>
-          <p className="text-[11px] text-zinc-500 text-center mt-3 font-medium">
-            Claude can make mistakes. Check important info.
-          </p>
         </div>
       </div>
 
-      {/* Hidden Inputs */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        accept=".txt,.pdf,.json,.js,.html,.css" 
-        onChange={(e) => handleFileSelect(e, 'file')} 
-      />
-      <input 
-        type="file" 
-        ref={photoInputRef} 
-        className="hidden" 
-        accept="image/*" 
-        onChange={(e) => handleFileSelect(e, 'image')} 
-      />
+      <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => handleFileSelect(e, 'file')} />
+      <input type="file" ref={photoInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileSelect(e, 'image')} />
+      
+      <AnimatePresence>
+        {showCamera && (
+          <CameraCapture 
+            onCapture={handleCameraCapture}
+            onClose={() => setShowCamera(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 });
@@ -1185,7 +1115,7 @@ function QuickAction({ label, onClick }: { label: string; onClick: () => void })
     <button 
       type="button"
       onClick={onClick}
-      className="p-4 glass-card border border-white/5 rounded-2xl text-sm text-zinc-400 hover:bg-white/5 hover:text-white hover:border-white/10 transition-all text-left depth-shadow 3d-button glow-hover group"
+      className="p-4 glass-card border border-white/5 rounded-2xl text-sm text-zinc-400 hover:bg-white/5 hover:text-white hover:border-white/10 transition-all text-left group"
     >
       <span className="group-hover:translate-x-1 inline-block transition-transform duration-200">
         {label}
@@ -1201,4 +1131,3 @@ function CrownIcon() {
     </div>
   );
 }
-

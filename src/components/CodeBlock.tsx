@@ -8,7 +8,7 @@ interface CodeBlockProps {
   value: string;
 }
 
-export function CodeBlock({ language, value }: CodeBlockProps) {
+export const CodeBlock = React.memo(({ language, value }: CodeBlockProps) => {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -102,4 +102,4 @@ export function CodeBlock({ language, value }: CodeBlockProps) {
       )}
     </div>
   );
-}
+});

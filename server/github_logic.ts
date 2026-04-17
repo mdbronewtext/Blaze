@@ -26,16 +26,25 @@ export async function handleGithubChat(req: Request, res: Response) {
       }
     });
 
-    if (response.status !== "200") {
-      throw new Error(`Model API error: ${response.status}`);
+    // The user strictly wants openai/gpt-4.1 for now, let's ensure the status check is lenient
+    // Some responses might return a string status "200" or number 200
+    if (String(response.status) !== "200") {
+      const errorBody = response.body as any;
+      console.error("GitHub API Error Details:", errorBody);
+      throw new Error(`Model API error: ${response.status} - ${errorBody?.error?.message || "Unknown error"}`);
+    }
+
+    const body = response.body as any;
+    if (!body.choices || body.choices.length === 0) {
+      throw new Error("Invalid response structure from GitHub API");
     }
 
     res.json({
-      response: (response.body as any).choices[0].message.content
+      response: body.choices[0].message.content
     });
 
-  } catch (e: any) {
-    console.error("Github AI Error", e);
-    res.status(500).json({ error: "API Error" });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: "GitHub API Error" });
   }
 }
