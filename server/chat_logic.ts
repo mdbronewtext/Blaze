@@ -91,11 +91,11 @@ export async function handleChat(req: any, res: any) {
     // Map frontend IDs to actual model identifiers
     let actualModel = model;
     if (model === "deepseek-r1") {
-      actualModel = "DeepSeek-R1"; // GitHub Models uses exactly "DeepSeek-R1"
+      actualModel = "deepseek/DeepSeek-R1";
     } else if (model === "grok-3") {
-      actualModel = "xai/grok-3"; // Some endpoints use xai/grok-3, some use grok-3. We'll leave as is.
+      actualModel = "xai/grok-3";
     } else if (model === "openai/gpt-4.1") {
-      actualModel = "gpt-4o"; // GitHub Models uses gpt-4o, there is no gpt-4.1 on GH Models
+      actualModel = "gpt-4o"; 
     }
 
     let systemPrompt = customSystemPrompt || "You are a helpful assistant.";
