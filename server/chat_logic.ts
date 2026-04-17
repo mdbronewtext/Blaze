@@ -1,5 +1,3 @@
-import ModelClient, { isUnexpected } from "@azure-rest/ai-inference";
-import { AzureKeyCredential } from "@azure/core-auth";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -8,7 +6,7 @@ dotenv.config();
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_PAT = process.env.GITHUB_PAT || process.env.GITHUB_GROK || GITHUB_TOKEN;
-const endpoint = "https://models.github.ai/inference";
+const endpoint = "https://models.github.ai/inference/chat/completions";
 
 const FREE_MODELS = ["openai/gpt-4.1", "deepseek-r1", "grok-3"];
 
@@ -86,8 +84,6 @@ export async function handleChat(req: any, res: any) {
       });
     }
 
-    const client = ModelClient(endpoint, new AzureKeyCredential(token));
-
     // Map frontend IDs to actual model identifiers
     let actualModel = model;
     if (model === "deepseek-r1") {
@@ -95,7 +91,7 @@ export async function handleChat(req: any, res: any) {
     } else if (model === "grok-3") {
       actualModel = "xai/grok-3";
     } else if (model === "openai/gpt-4.1") {
-      actualModel = "gpt-4o"; 
+      actualModel = "openai/gpt-4o"; 
     }
 
     let systemPrompt = customSystemPrompt || "You are a helpful assistant.";
@@ -122,19 +118,25 @@ export async function handleChat(req: any, res: any) {
     let responseText = "";
 
     if (FREE_MODELS.includes(model) || model.startsWith("openai/") || model === "deepseek-r1" || model === "grok-3") {
-      const response = await client.path("/chat/completions").post({
-        body: {
+      const gitRes = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
           messages,
           temperature: 1.0,
           top_p: 1.0,
           model: actualModel 
-        }
+        })
       });
 
-      if (isUnexpected(response)) {
-        throw response.body.error || new Error("Unexpected API response");
+      const data = await gitRes.json();
+      if (!gitRes.ok) {
+        throw data.error || new Error(data.message || "Unexpected GitHub Models API response");
       }
-      responseText = response.body.choices[0].message.content;
+      responseText = data.choices[0].message.content;
     } else {
       const prompt = messages.map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join("\n");
       const externalRes = await fetch(

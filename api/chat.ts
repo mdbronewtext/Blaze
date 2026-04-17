@@ -1,4 +1,4 @@
-import { handleChat } from "../server/chat_logic";
+import { handleChat } from "../server/chat_logic.ts";
 
 // Increase max execution time on Vercel to prevent 504 Gateway Timeouts during AI generation
 // 60 is the maximum allowed on Vercel Hobby plan
