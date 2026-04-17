@@ -14,6 +14,10 @@ export async function handleChat(req: any, res: any) {
   try {
     const { message, history = [], module = 'chat', systemPrompt: customSystemPrompt, model = "openai/gpt-4.1" } = req.body;
 
+    console.log(`[Chat Request] Model: ${model}, Module: ${module}`);
+    // Only log message length for security/privacy if preferred, but user requested request body logging
+    console.log(`[Chat Request] Body:`, JSON.stringify({ model, module, messageLength: message?.length }));
+
     // --- PRO CHECK ---
     const isFreeModel = FREE_MODELS.includes(model);
     if (!isFreeModel) {
@@ -133,18 +137,26 @@ export async function handleChat(req: any, res: any) {
       });
 
       const data = await gitRes.json();
+      console.log(`[GitHub API Response] Status: ${gitRes.status}`);
       if (!gitRes.ok) {
+        console.error(`[GitHub API Error] Details:`, JSON.stringify(data));
         throw data.error || new Error(data.message || "Unexpected GitHub Models API response");
       }
       responseText = data.choices[0].message.content;
+      console.log(`[GitHub API Success] Response Length: ${responseText?.length}`);
     } else {
       const prompt = messages.map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join("\n");
+      console.log(`[External API Request] Model: ${actualModel}`);
       const externalRes = await fetch(
         `https://shaikhs-ai.rajageminiwala.workers.dev/chat/get?prompt=${encodeURIComponent(prompt)}&model=${actualModel}`
       );
-      if (!externalRes.ok) throw new Error("External API Error");
+      if (!externalRes.ok) {
+        console.error(`[External API Error] Status: ${externalRes.status}`);
+        throw new Error("External API Error");
+      }
       const data = await externalRes.json();
       responseText = data.response || "";
+      console.log(`[External API Success] Response Length: ${responseText?.length}`);
     }
 
     res.json({ text: responseText });
