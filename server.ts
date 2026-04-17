@@ -2,9 +2,13 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { handleChat } from "./server/chat_logic";
+import { handleChat } from "./server/chat_logic.ts";
+import { handleGithubChat } from "./server/github_logic.ts";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -17,7 +21,7 @@ app.get("/api/health", (req, res) => {
 // API Routes for AI
 app.post("/api/ai", handleChat);
 app.post("/api/chat", handleChat);
-app.post("/api/github-chat", handleChat);
+app.post("/api/github-chat", handleGithubChat);
 
 async function startServer() {
   const PORT = 3000;

@@ -1048,9 +1048,10 @@ export function AdminPanel({ currentUser, onClose, aiModels, onToggleModel }: Ad
                         onChange={(e) => setTempSettings(prev => ({ ...prev, defaultModel: e.target.value as any }))}
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm"
                       >
-                        {aiModels?.map(model => (
-                          <option key={model.id} value={model.id}>{model.name}</option>
-                        ))}
+                        <option value="gpt4o">GPT-4o</option>
+                        <option value="claude">Claude 3.5</option>
+                        <option value="deepseek">DeepSeek-R1</option>
+                        <option value="llama">Llama 3.2</option>
                       </select>
                     </div>
                   </div>

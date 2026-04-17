@@ -122,14 +122,6 @@ export interface SystemSettings {
     free: number;
     pro: number;
   };
-  models?: {
-    id: string;
-    name: string;
-    description: string;
-    icon: string;
-    type: string;
-    enabled: boolean;
-  }[];
 }
 
 export interface RedeemCode {

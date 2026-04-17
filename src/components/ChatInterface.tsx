@@ -124,7 +124,6 @@ interface ChatInterfaceProps {
   userRole?: string;
   currentUser: UserProfile;
   aiModels: any[];
-  onOpenPricing?: () => void;
 }
 
 const MessageItem = React.memo(({ 
@@ -371,8 +370,7 @@ export const ChatInterface = React.memo(({
   isLoading = false,
   userRole,
   currentUser,
-  aiModels,
-  onOpenPricing
+  aiModels
 }: ChatInterfaceProps) => {
   const isOwner = userRole === 'owner';
   const [input, setInput] = useState('');
@@ -823,56 +821,32 @@ export const ChatInterface = React.memo(({
                     <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Select Model</p>
                   </div>
                   <div className="space-y-1">
-                    {aiModels.filter(m => m.enabled !== false).map((model) => {
-                      const isProModel = model.requiredRole === 'pro';
-                      const canAccess = isOwner || userPlan !== 'FREE' || !isProModel;
-
-                      return (
-                        <button
-                          type="button"
-                          key={model.id}
-                          onClick={() => {
-                            if (!canAccess) {
-                              setIsModelMenuOpen(false);
-                              if (onOpenPricing) onOpenPricing();
-                            } else {
-                              onAIModelChange(model.id as AIModel);
-                              setIsModelMenuOpen(false);
-                            }
-                          }}
-                          className={`group w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-200 relative overflow-hidden ${
-                            selectedAIModel === model.id 
-                              ? 'bg-zinc-800/80 border border-zinc-700 shadow-inner' 
-                              : canAccess ? 'hover:bg-zinc-800/40 border border-transparent cursor-pointer'
-                              : 'opacity-70 hover:opacity-100 hover:bg-zinc-900 border border-transparent cursor-not-allowed'
-                          }`}
-                        >
-                          <div className={`w-9 h-9 rounded-xl bg-zinc-900 flex items-center justify-center border border-zinc-800 shadow-sm text-lg relative`}>
-                            {model.icon}
-                            {!canAccess && (
-                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center border-2 border-zinc-950">
-                                <Lock className="w-2 h-2 text-zinc-900" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="text-left flex-1">
-                            <p className={`text-[11px] font-bold flex items-center gap-1.5 ${selectedAIModel === model.id ? 'text-white' : 'text-zinc-300'}`}>
-                              {model.name}
-                              {isProModel && <span className="text-[8px] px-1.5 py-0.5 rounded uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20">Pro</span>}
-                            </p>
-                            <p className="text-[9px] text-zinc-500 font-medium truncate max-w-[120px]">{model.description}</p>
-                          </div>
-                          {selectedAIModel === model.id && canAccess && (
-                            <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-                          )}
-                          {!canAccess && (
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-zinc-900/80 to-zinc-900 opacity-0 group-hover:opacity-100 flex items-center justify-end pr-3 transition-opacity">
-                              <span className="text-[9px] font-bold text-amber-500 my-auto h-fit mt-[14px]">Upgrade to Access</span>
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
+                    {aiModels.filter(m => m.enabled !== false).map((model) => (
+                      <button
+                        type="button"
+                        key={model.id}
+                        onClick={() => {
+                          onAIModelChange(model.id as AIModel);
+                          setIsModelMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-200 ${
+                          selectedAIModel === model.id 
+                            ? 'bg-zinc-800/80 border border-zinc-700 shadow-inner' 
+                            : 'hover:bg-zinc-800/40 border border-transparent'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl bg-zinc-900 flex items-center justify-center border border-zinc-800 shadow-sm text-lg`}>
+                          {model.icon}
+                        </div>
+                        <div className="text-left">
+                          <p className={`text-[11px] font-bold ${selectedAIModel === model.id ? 'text-white' : 'text-zinc-300'}`}>{model.name}</p>
+                          <p className="text-[9px] text-zinc-500 font-medium truncate max-w-[120px]">{model.description}</p>
+                        </div>
+                        {selectedAIModel === model.id && (
+                          <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                        )}
+                      </button>
+                    ))}
                   </div>
                 </motion.div>
               )}

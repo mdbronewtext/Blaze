@@ -100,53 +100,24 @@ export default function App() {
   }, [userSettings.theme, userSettings.customColors]);
   
   const DEFAULT_MODELS = [
-    { id: "kyvex", name: "Kyvex", description: "Fast & Smart", icon: "⚡", type: "api", enabled: true, requiredRole: "pro" },
-    { id: "claude-sonnet-4.5", name: "Claude-sonnet-4.5", description: "Advanced Intelligence", icon: "🧠", type: "api", enabled: true, requiredRole: "pro" },
-    { id: "gpt-5", name: "GPT-5", description: "Multi AI", icon: "🤖", type: "api", enabled: true, requiredRole: "pro" },
-    { id: "gemini-2.5-pro", name: "Gemini-2.5-pro", description: "Multi AI", icon: "✨", type: "api", enabled: true, requiredRole: "pro" },
-    { id: "grok-4", name: "Grok 4", description: "Multi AI", icon: "⚡", type: "api", enabled: true, requiredRole: "pro" },
-    { id: "gemini-imagen-4", name: "Gemini-imagen-4", description: "Multi AI", icon: "🎨", type: "api", enabled: true, requiredRole: "pro" },
-    { id: "openai/gpt-4.1", name: "GPT-4.1", description: "GitHub AI", icon: "💬", type: "github", enabled: true, requiredRole: "free" },
-    { id: "deepseek-r1", name: "DeepSeek-R1", description: "Advanced reasoning AI", icon: "🧠", type: "github", enabled: true, requiredRole: "free" },
-    { id: "grok-3", name: "Grok 3", description: "Advanced model by xAI", icon: "🌌", type: "github", enabled: true, requiredRole: "free" }
+    { id: "kyvex", name: "Kyvex", description: "Fast & Smart", icon: "⚡", type: "api", enabled: true },
+    { id: "claude-sonnet-4.5", name: "Claude-sonnet-4.5", description: "Advanced Intelligence", icon: "🧠", type: "api", enabled: true },
+    { id: "gpt-5", name: "GPT-5", description: "Multi AI", icon: "🤖", type: "api", enabled: true },
+    { id: "gemini-2.5-pro", name: "Gemini-2.5-pro", description: "Multi AI", icon: "✨", type: "api", enabled: true },
+    { id: "grok-4", name: "Grok 4", description: "Multi AI", icon: "⚡", type: "api", enabled: true },
+    { id: "gemini-imagen-4", name: "Gemini-imagen-4", description: "Multi AI", icon: "🎨", type: "api", enabled: true },
+    { id: "openai/gpt-4.1", name: "GPT-4.1", description: "GitHub AI", icon: "💬", type: "github", enabled: true }
   ];
 
-  const [aiModels, setAiModels] = useState<any[]>(DEFAULT_MODELS);
+  const [aiModels, setAiModels] = useState(() => {
+    const saved = localStorage.getItem("models");
+    return saved ? JSON.parse(saved) : DEFAULT_MODELS;
+  });
 
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'systemSettings', 'global'), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data.models) {
-          let updatedModels = [...data.models];
-          let changed = false;
-          DEFAULT_MODELS.forEach(defModel => {
-            if (!updatedModels.find(m => m.id === defModel.id)) {
-              updatedModels.push(defModel);
-              changed = true;
-            }
-          });
-          setAiModels(updatedModels);
-          if (changed) {
-            setDoc(doc(db, 'systemSettings', 'global'), { models: updatedModels }, { merge: true });
-          }
-        } else {
-          // Initialize if missing in Firestore
-          setDoc(doc(db, 'systemSettings', 'global'), { models: DEFAULT_MODELS }, { merge: true });
-        }
-      }
-    });
-    return () => unsub();
-  }, []);
-
-  const toggleModel = async (id: string) => {
+  const toggleModel = (id: string) => {
     const updated = aiModels.map(m => m.id === id ? { ...m, enabled: m.enabled === false ? true : false } : m);
     setAiModels(updated);
-    try {
-      await setDoc(doc(db, 'systemSettings', 'global'), { models: updated }, { merge: true });
-    } catch (error) {
-      console.error("Error updating model status:", error);
-    }
+    localStorage.setItem("models", JSON.stringify(updated));
   };
 
   useEffect(() => {
@@ -624,43 +595,46 @@ export default function App() {
         parts: [{ text: m.message }]
       }));
       
-      const systemPrompt = `You are Blaze AI. 
-- No ads
-- Clean answer only
-- Direct output`;
+      const systemPrompt = undefined;
 
       let fullContent = '';
       try {
-        const selectedModelConfig = aiModels.find((m: any) => m.id === selectedAIModel);
-        let text = "";
+        const buildPrompt = (input: string) => `
+You are Blaze AI.
 
-        const idToken = await auth.currentUser?.getIdToken();
-        const response = await fetch('/api/ai', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
-          },
-          body: JSON.stringify({ 
-            message: content,
-            history,
-            model: selectedAIModel,
-            systemPrompt: selectedModelConfig?.type === "github" ? systemPrompt : `You are Blaze AI. 
 - No ads
 - Clean answer only
 - Direct output
 
-User: ${content}`
-          })
-        });
+User:
+${input}
+`;
+        const prompt = buildPrompt(content);
         
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || 'API Error');
+        const selectedModelConfig = aiModels.find((m: any) => m.id === selectedAIModel);
+        let text = "";
+
+        if (selectedModelConfig?.type === "github") {
+          const response = await fetch('/api/github-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: prompt })
+          });
+          if (!response.ok) throw new Error('API Error');
+          const data = await response.json();
+          text = data.response || "";
+        } else {
+          const res = await fetch(
+            `https://shaikhs-ai.rajageminiwala.workers.dev/chat/get?prompt=${encodeURIComponent(prompt)}&model=${selectedAIModel}`
+          );
+
+          if (!res.ok) {
+            throw new Error('API Error');
+          }
+
+          const data = await res.json();
+          text = data.response || "";
         }
-        
-        const data = await response.json();
-        text = data.text || "";
 
         // Clean response
         text = text.replace(/\[THREAD_ID:.*?\]/g, "");
@@ -1042,7 +1016,6 @@ User: ${content}`
                     onSaveToMemory={(content) => handleSaveToMemory(content, 'fact')} isTyping={isTyping} streamingMessage={streamingMessage} userPlan={user.role === 'owner' ? 'OWNER' : user.plan}
                     isLoading={isInitialLoading} userRole={user.role} privacyMode={userSettings.privacyMode} currentUser={user}
                     aiModels={aiModels}
-                    onOpenPricing={() => handleNavigate('pricing')}
                   />
                 )}
                 {activePage === 'settings' && (
