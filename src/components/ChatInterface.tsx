@@ -791,11 +791,19 @@ export const ChatInterface = React.memo(({
                     <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Select Model</p>
                   </div>
                   <div className="space-y-1">
-                    {aiModels.filter(m => m.enabled !== false).map((model) => (
+                    {aiModels.filter(m => m.enabled !== false).map((model) => {
+                      const isPro = model.requiredRole === 'pro';
+                      const isLocked = isPro && userPlan === 'FREE';
+                      return (
                       <button
                         type="button"
                         key={model.id}
                         onClick={() => {
+                          if (isLocked) {
+                            setIsModelMenuOpen(false);
+                            window.dispatchEvent(new CustomEvent('showUpgradeModal'));
+                            return;
+                          }
                           onAIModelChange(model.id as AIModel);
                           setIsModelMenuOpen(false);
                         }}
@@ -803,20 +811,24 @@ export const ChatInterface = React.memo(({
                           selectedAIModel === model.id 
                             ? 'bg-zinc-800/80 border border-zinc-700 shadow-inner' 
                             : 'hover:bg-zinc-800/40 border border-transparent'
-                        }`}
+                        } ${isLocked ? 'opacity-80' : ''}`}
                       >
-                        <div className={`w-9 h-9 rounded-xl bg-zinc-900 flex items-center justify-center border border-zinc-800 shadow-sm text-lg`}>
+                        <div className={`w-9 h-9 rounded-xl ${isPro ? 'bg-gradient-to-br from-amber-500/20 to-orange-500/10 border-amber-500/30' : 'bg-zinc-900 border-zinc-800'} flex items-center justify-center border shadow-sm text-lg relative`}>
                           {model.icon}
                         </div>
-                        <div className="text-left">
-                          <p className={`text-[11px] font-bold ${selectedAIModel === model.id ? 'text-white' : 'text-zinc-300'}`}>{model.name}</p>
+                        <div className="text-left flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className={`text-[11px] font-bold ${selectedAIModel === model.id ? 'text-white' : 'text-zinc-300'}`}>{model.name}</p>
+                            {isLocked && <span className="text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded pl-1.5 flex items-center gap-1 font-bold uppercase tracking-wider"><Lock size={8} /> Pro</span>}
+                            {isPro && !isLocked && <span className="text-[8px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Pro</span>}
+                          </div>
                           <p className="text-[9px] text-zinc-500 font-medium truncate max-w-[120px]">{model.description}</p>
                         </div>
                         {selectedAIModel === model.id && (
                           <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                         )}
                       </button>
-                    ))}
+                    )})}
                   </div>
                 </motion.div>
               )}

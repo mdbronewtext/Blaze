@@ -1,6 +1,7 @@
 import ModelClient, { isUnexpected } from "@azure-rest/ai-inference";
 import { AzureKeyCredential } from "@azure/core-auth";
 import dotenv from "dotenv";
+import { isModelAllowed } from "./model_roles.js";
 
 dotenv.config();
 
@@ -9,7 +10,11 @@ const endpoint = "https://models.github.ai/inference";
 
 export async function handleChat(req: any, res: any) {
   try {
-    const { message, history = [], module = 'chat', systemPrompt: customSystemPrompt, model = "openai/gpt-4.1" } = req.body;
+    const { message, history = [], module = 'chat', systemPrompt: customSystemPrompt, model = "openai/gpt-4.1", userPlan = "FREE" } = req.body;
+
+    if (!isModelAllowed(model, userPlan)) {
+      return res.status(403).json({ error: "Access denied. Please upgrade to Pro to use this model." });
+    }
 
     if (!token) {
       return res.status(400).json({ 

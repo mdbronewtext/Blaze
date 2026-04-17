@@ -100,21 +100,28 @@ export default function App() {
   }, [userSettings.theme, userSettings.customColors]);
   
   const DEFAULT_MODELS = [
-    { id: "kyvex", name: "Kyvex", description: "Fast & Smart", icon: "⚡", type: "api", enabled: true },
-    { id: "claude-sonnet-4.5", name: "Claude-sonnet-4.5", description: "Advanced Intelligence", icon: "🧠", type: "api", enabled: true },
-    { id: "gpt-5", name: "GPT-5", description: "Multi AI", icon: "🤖", type: "api", enabled: true },
-    { id: "gemini-2.5-pro", name: "Gemini-2.5-pro", description: "Multi AI", icon: "✨", type: "api", enabled: true },
-    { id: "grok-4", name: "Grok 4", description: "Multi AI", icon: "⚡", type: "api", enabled: true },
-    { id: "gemini-imagen-4", name: "Gemini-imagen-4", description: "Multi AI", icon: "🎨", type: "api", enabled: true },
-    { id: "openai/gpt-4.1", name: "GPT-4.1", description: "GitHub AI", icon: "💬", type: "github", enabled: true },
-    { id: "xai/grok-3", name: "Grok 3", description: "GitHub AI", icon: "🌌", type: "github", enabled: true },
-    { id: "deepseek/DeepSeek-R1", name: "DeepSeek-R1", description: "Deep Reasoning", icon: "🐳", type: "github", enabled: true }
+    { id: "kyvex", name: "Kyvex", description: "Fast & Smart", icon: "⚡", type: "api", enabled: true, requiredRole: "pro" },
+    { id: "claude-sonnet-4.5", name: "Claude-sonnet-4.5", description: "Advanced Intelligence", icon: "🧠", type: "api", enabled: true, requiredRole: "pro" },
+    { id: "gpt-5", name: "GPT-5", description: "Multi AI", icon: "🤖", type: "api", enabled: true, requiredRole: "pro" },
+    { id: "gemini-2.5-pro", name: "Gemini-2.5-pro", description: "Multi AI", icon: "✨", type: "api", enabled: true, requiredRole: "pro" },
+    { id: "grok-4", name: "Grok 4", description: "Multi AI", icon: "⚡", type: "api", enabled: true, requiredRole: "pro" },
+    { id: "gemini-imagen-4", name: "Gemini-imagen-4", description: "Multi AI", icon: "🎨", type: "api", enabled: true, requiredRole: "pro" },
+    { id: "openai/gpt-4.1", name: "GPT-4.1", description: "GitHub AI", icon: "💬", type: "github", enabled: true, requiredRole: "free" },
+    { id: "xai/grok-3", name: "Grok 3", description: "GitHub AI", icon: "🌌", type: "github", enabled: true, requiredRole: "free" },
+    { id: "deepseek/DeepSeek-R1", name: "DeepSeek-R1", description: "Deep Reasoning", icon: "🐳", type: "github", enabled: true, requiredRole: "free" }
   ];
 
   const [aiModels, setAiModels] = useState(() => {
     const saved = localStorage.getItem("models");
     if (!saved) return DEFAULT_MODELS;
-    const models = JSON.parse(saved);
+    let models = JSON.parse(saved);
+    
+    // Update existing models with roles
+    models = models.map((m: any) => {
+      const defaultMatch = DEFAULT_MODELS.find(dm => dm.id === m.id);
+      return defaultMatch ? { ...m, requiredRole: defaultMatch.requiredRole } : m;
+    });
+
     // Ensure new models from DEFAULT_MODELS are added to the saved list
     const missingModels = DEFAULT_MODELS.filter(dm => !models.some((m: any) => m.id === dm.id));
     if (missingModels.length > 0) {
@@ -122,6 +129,8 @@ export default function App() {
       localStorage.setItem("models", JSON.stringify(updated));
       return updated;
     }
+    
+    localStorage.setItem("models", JSON.stringify(models));
     return models;
   });
 
@@ -155,6 +164,9 @@ export default function App() {
   };
 
   useEffect(() => {
+    const handleUpgradeModal = () => handleNavigate('pricing');
+    window.addEventListener('showUpgradeModal', handleUpgradeModal);
+    
     let rafId: number;
     const handleMouseMove = (e: MouseEvent) => {
       rafId = requestAnimationFrame(() => {
@@ -168,6 +180,7 @@ export default function App() {
     window.addEventListener('mousemove', handleMouseMove);
 
     return () => {
+      window.removeEventListener('showUpgradeModal', handleUpgradeModal);
       window.removeEventListener('mousemove', handleMouseMove);
       cancelAnimationFrame(rafId);
     };
@@ -629,7 +642,11 @@ ${input}
           const response = await fetch('/api/github-chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: prompt, model: selectedAIModel })
+            body: JSON.stringify({ 
+              message: prompt, 
+              model: selectedAIModel,
+              userPlan: user?.plan || 'FREE' 
+            })
           });
           if (!response.ok) throw new Error('API Error');
           const data = await response.json();

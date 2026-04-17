@@ -1,10 +1,19 @@
 import ModelClient from "@azure-rest/ai-inference";
 import { AzureKeyCredential } from "@azure/core-auth";
 import type { Request, Response } from "express";
+import { isModelAllowed } from "./model_roles.js";
 
 export async function handleGithubChat(req: Request, res: Response) {
   const token = process.env.GITHUB_TOKEN;
   
+  const requestedModel = req.body.model || "openai/gpt-4.1";
+  const userPlan = req.body.userPlan || "FREE";
+
+  if (!isModelAllowed(requestedModel, userPlan)) {
+    res.status(403).json({ error: "Access denied. Please upgrade to Pro to use this model." });
+    return;
+  }
+
   if (!token) {
     res.status(500).json({ error: "GITHUB_TOKEN environment variable is missing" });
     return;

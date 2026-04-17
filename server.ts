@@ -22,6 +22,10 @@ app.get("/api/health", (req, res) => {
 app.post("/api/ai", handleChat);
 app.post("/api/chat", handleChat);
 app.post("/api/github-chat", handleGithubChat);
+app.get("/api/models", async (req, res) => {
+  const { handleGetModels } = await import("./server/models_api.ts");
+  handleGetModels(req, res);
+});
 
 async function startServer() {
   const PORT = 3000;

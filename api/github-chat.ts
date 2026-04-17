@@ -1,5 +1,6 @@
 import ModelClient from "@azure-rest/ai-inference";
 import { AzureKeyCredential } from "@azure/core-auth";
+import { isModelAllowed } from "../server/model_roles.js";
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -8,6 +9,13 @@ export default async function handler(req: any, res: any) {
 
   try {
     const token = process.env.GITHUB_TOKEN;
+
+    const requestedModel = req.body.model || "openai/gpt-4.1";
+    const userPlan = req.body.userPlan || "FREE";
+
+    if (!isModelAllowed(requestedModel, userPlan)) {
+      return res.status(403).json({ error: "Access denied. Please upgrade to Pro to use this model." });
+    }
 
     if (!token) {
       return res.status(500).json({ error: "Missing API Key" });
