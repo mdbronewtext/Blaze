@@ -635,7 +635,7 @@ export default function App() {
         let text = "";
 
         const idToken = await auth.currentUser?.getIdToken();
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/ai', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
