@@ -1,6 +1,6 @@
 import ModelClient from "@azure-rest/ai-inference";
 import { AzureKeyCredential } from "@azure/core-auth";
-import { Request, Response } from "express";
+import type { Request, Response } from "express";
 
 export async function handleGithubChat(req: Request, res: Response) {
   const token = process.env.GITHUB_TOKEN;
