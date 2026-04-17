@@ -107,7 +107,8 @@ export default function App() {
     { id: "grok-4", name: "Grok 4", description: "Multi AI", icon: "⚡", type: "api", enabled: true },
     { id: "gemini-imagen-4", name: "Gemini-imagen-4", description: "Multi AI", icon: "🎨", type: "api", enabled: true },
     { id: "openai/gpt-4.1", name: "GPT-4.1", description: "GitHub AI", icon: "💬", type: "github", enabled: true },
-    { id: "xai/grok-3", name: "Grok 3", description: "GitHub AI", icon: "🌌", type: "github", enabled: true }
+    { id: "xai/grok-3", name: "Grok 3", description: "GitHub AI", icon: "🌌", type: "github", enabled: true },
+    { id: "deepseek/DeepSeek-R1", name: "DeepSeek-R1", description: "Deep Reasoning", icon: "🐳", type: "github", enabled: true }
   ];
 
   const [aiModels, setAiModels] = useState(() => {

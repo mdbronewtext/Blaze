@@ -21,8 +21,9 @@ export default async function handler(req, res) {
           { role: "user", content: req.body.message }
         ],
         model: req.body.model || "openai/gpt-4.1",
-        temperature: 1,
-        top_p: 1
+        temperature: req.body.temperature || 1,
+        top_p: req.body.top_p || 1,
+        max_tokens: req.body.max_tokens || 4096
       }
     });
 
